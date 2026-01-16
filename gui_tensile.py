@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-育材堂报告助手 V3.7 - VDA弯曲报告处理模块
+育材堂报告助手 V3.7 - 拉伸报告处理模块
 
 软件名称：育材堂报告助手
 版本号：V3.7
@@ -9,12 +9,12 @@
 开发完成日期：2024年
 
 模块功能：
-    提供VDA弯曲试验报告的数据处理和PPT报告生成功能。
+    提供拉伸试验报告的数据处理和PPT报告生成功能。
 
 主要功能：
-    - 支持Excel/CSV数据文件导入
-    - 自动提取试样编号、厚度、最大力、压头位移、角度等参数
-    - 单位自动转换（N→kN）
+    - 支持Word/Excel数据文件导入
+    - 自动提取试样编号、厚度、Rp、Rm、Ag、A等参数
+    - 自动计算平均值±标准差
     - 集成Origin绘图功能
     - 一键生成PPT报告
 
@@ -24,12 +24,12 @@ Copyright (c) 2024 育材堂. All rights reserved.
 import tkinter as tk
 from tkinter import messagebox, filedialog
 import os
-import vda_processor
+import tensile_processor
 import origin_processor
 from gui_shared import resource_path, browse_file, get_unique_path, COLORS
 from tkinterdnd2 import DND_FILES
 
-class VDAFrame(tk.Frame):
+class TensileFrame(tk.Frame):
     def __init__(self, parent):
         super().__init__(parent, bg=COLORS['bg_dark'])
         self.setup_ui()
@@ -39,20 +39,21 @@ class VDAFrame(tk.Frame):
             widget.destroy()
         self.configure(bg=COLORS['bg_dark'])
         
-        frame = tk.LabelFrame(self, text="📐 VDA弯曲报告生成", padx=20, pady=20,
+        frame = tk.LabelFrame(self, text="📊 拉伸实验报告生成", padx=20, pady=20,
                              bg=COLORS['bg_dark'], fg=COLORS['accent'], font=('微软雅黑', 11, 'bold'))
         frame.pack(fill="x", padx=25, pady=25)
         
-        self.v_vda_src = tk.StringVar()
+        self.v_tensile_src = tk.StringVar()
+        self.v_include_ag = tk.BooleanVar(value=True)
         
         # 文件选择
-        tk.Label(frame, text="选择原始数据文件 (Excel):", bg=COLORS['bg_dark'], fg=COLORS['text'], font=('微软雅黑', 10)).grid(row=0, column=0, columnspan=4, sticky='w', pady=(0,10))
+        tk.Label(frame, text="选择原始数据文件 (Word/Excel):", bg=COLORS['bg_dark'], fg=COLORS['text'], font=('微软雅黑', 10)).grid(row=0, column=0, columnspan=4, sticky='w', pady=(0,10))
         
-        entry = tk.Entry(frame, textvariable=self.v_vda_src, width=50, font=('Consolas', 10), bg=COLORS['input_bg'], fg=COLORS['text'],
+        entry = tk.Entry(frame, textvariable=self.v_tensile_src, width=50, font=('Consolas', 10), bg=COLORS['input_bg'], fg=COLORS['text'],
                         insertbackground=COLORS['accent'], relief='flat', highlightthickness=1, highlightbackground=COLORS['border'], highlightcolor=COLORS['accent'])
         entry.grid(row=1, column=0, columnspan=3, padx=(0,10), pady=5, sticky='ew', ipady=8)
         
-        tk.Button(frame, text="📂 浏览", command=lambda: browse_file(self.v_vda_src, [("Excel Files", "*.xlsx *.xls")]),
+        tk.Button(frame, text="📂 浏览", command=lambda: browse_file(self.v_tensile_src, [("Data Files", "*.xlsx *.xls *.csv *.docx")]),
                  bg=COLORS['bg_light'], fg=COLORS['text'], font=('微软雅黑', 9), relief='flat', cursor='hand2', padx=15).grid(row=1, column=3, padx=5, ipady=5)
         
         # 拖拽区域
@@ -63,9 +64,14 @@ class VDAFrame(tk.Frame):
         self._setup_dnd(entry)
         self._setup_dnd(self.drop_zone)
 
+        # 选项
+        opt_frame = tk.Frame(frame, bg=COLORS['bg_dark'])
+        opt_frame.grid(row=3, column=0, columnspan=4, sticky='w', pady=5)
+        tk.Checkbutton(opt_frame, text="包含 Ag (最大力总延伸率)", variable=self.v_include_ag, bg=COLORS['bg_dark'], fg=COLORS['text'], selectcolor=COLORS['bg_medium'], font=('微软雅黑', 9)).pack(side="left")
+
         # 绘图选项
         self.plot_frame = tk.LabelFrame(frame, text="绘图选项", padx=10, pady=10, bg=COLORS['bg_dark'], fg=COLORS['text_dim'], font=('微软雅黑', 9))
-        self.plot_frame.grid(row=3, column=0, columnspan=4, sticky='ew', pady=10)
+        self.plot_frame.grid(row=4, column=0, columnspan=4, sticky='ew', pady=10)
         
         self.o_template = tk.StringVar()
         self.o_lines = tk.IntVar(value=12)
@@ -94,7 +100,7 @@ class VDAFrame(tk.Frame):
 
         # 按钮放最后一排
         btn_frame = tk.Frame(frame, bg=COLORS['bg_dark'])
-        btn_frame.grid(row=4, column=0, columnspan=4, pady=15, sticky='ew')
+        btn_frame.grid(row=5, column=0, columnspan=4, pady=15, sticky='ew')
         
         tk.Button(btn_frame, text="📋 仅提取数据", command=self.run_extract_only, bg=COLORS['accent'], fg=COLORS['button_fg'], font=("微软雅黑", 10, "bold"), relief='flat', cursor='hand2').pack(side='left', expand=True, fill='x', padx=2, ipady=10)
         tk.Button(btn_frame, text="📈 仅绘图", command=self.run_plot_only, bg=COLORS['success'], fg=COLORS['button_fg'], font=("微软雅黑", 10, "bold"), relief='flat', cursor='hand2').pack(side='left', expand=True, fill='x', padx=2, ipady=10)
@@ -111,7 +117,7 @@ class VDAFrame(tk.Frame):
                 path = paths[0] if paths else data.strip('{}')
             else:
                 path = data.split()[0] if data.split() else data
-            self.v_vda_src.set(path)
+            self.v_tensile_src.set(path)
         
         def do_register():
             try:
@@ -127,18 +133,18 @@ class VDAFrame(tk.Frame):
         if p: self.o_template.set(p)
 
     def run_extract_only(self):
-        src = self.v_vda_src.get()
+        src = self.v_tensile_src.get()
         if not src: return messagebox.showwarning("提示", "请先选择数据文件")
         
-        pptx = resource_path("VDA弯曲角模板.pptx")
+        pptx = resource_path("拉伸模板.pptx")
         if not os.path.exists(pptx): return messagebox.showerror("错误", "未找到模板文件")
         
         folder = os.path.dirname(src)
         fname = os.path.splitext(os.path.basename(src))[0]
-        out = get_unique_path(os.path.join(folder, f"VDA报告_{fname}.pptx"))
+        out = get_unique_path(os.path.join(folder, f"拉伸报告_{fname}.pptx"))
         
         try:
-            msg = vda_processor.process_vda_report(src, pptx, out)
+            msg = tensile_processor.generate_report(src, pptx, out, self.v_include_ag.get())
             if msg and "错误" not in msg:
                 messagebox.showinfo("成功", msg)
                 os.startfile(out)
@@ -148,7 +154,7 @@ class VDAFrame(tk.Frame):
             messagebox.showerror("异常", str(e))
 
     def run_plot_only(self):
-        src = self.v_vda_src.get()
+        src = self.v_tensile_src.get()
         if not src: return messagebox.showwarning("提示", "请先选择数据文件")
         
         # 检查Origin连接
@@ -159,12 +165,12 @@ class VDAFrame(tk.Frame):
         messagebox.showwarning("注意", "绘图期间请勿操作键盘鼠标！\n点击确定开始绘图...")
         
         try:
-            msg = origin_processor.plot_vda_to_ppt(src, self.o_template.get() or None, self.o_lines.get(), self.o_swap_xy.get(), width_cm=self.o_width.get(), height_cm=self.o_height.get())
+            msg = origin_processor.plot_tensile_to_ppt(src, self.o_template.get() or None, self.o_lines.get(), self.o_swap_xy.get(), width_cm=self.o_width.get(), height_cm=self.o_height.get())
             messagebox.showinfo("完成", msg)
             # 打开生成的PPT
             folder = os.path.dirname(src)
             fname = os.path.splitext(os.path.basename(src))[0]
-            ppt_path = os.path.join(folder, f"VDA曲线_{fname}.pptx")
+            ppt_path = os.path.join(folder, f"拉伸曲线_{fname}.pptx")
             if os.path.exists(ppt_path):
                 os.startfile(ppt_path)
         except Exception as e:
