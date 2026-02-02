@@ -29,44 +29,45 @@ class HardnessFrame(tk.Frame):
         self.hard_precision = tk.IntVar(value=1)
 
         # --- 3. 顶部操作区 (Grid布局) ---
-        
+
         # 提示标签
-        tk.Label(main_frame, text="PDF 数据源:", 
+        label_source = tk.Label(main_frame, text="PDF 数据源 | 💡 可拖拽到整个界面任意位置",
                 bg=COLORS['bg_dark'], fg=COLORS['text'],
-                font=('微软雅黑', 10)).grid(row=0, column=0, sticky='w', pady=(0,5))
-        
+                font=('微软雅黑', 10))
+        label_source.grid(row=0, column=0, sticky='w', pady=(0,5))
+
         # 输入框 (科技感样式)
-        entry = tk.Entry(main_frame, textvariable=self.hard_pdf_src, 
+        entry = tk.Entry(main_frame, textvariable=self.hard_pdf_src,
                         font=('Consolas', 10), bg=COLORS['input_bg'], fg=COLORS['text'],
                         insertbackground=COLORS['accent'], relief='flat', highlightthickness=1,
                         highlightbackground=COLORS['border'], highlightcolor=COLORS['accent'])
         entry.grid(row=1, column=0, padx=(0,10), sticky='ew', ipady=8)
-        
+
         # 浏览按钮
-        btn_browse = tk.Button(main_frame, text="📂 浏览", 
+        btn_browse = tk.Button(main_frame, text="📂 浏览",
                               command=lambda: browse_file(self.hard_pdf_src, [("PDF Files", "*.pdf")]),
                               bg=COLORS['bg_light'], fg=COLORS['text'], font=('微软雅黑', 9),
                               relief='flat', cursor='hand2')
         btn_browse.grid(row=1, column=1, sticky='ew', ipady=5, padx=5)
 
-        # 拖拽区
-        drop_zone = tk.Label(main_frame, text="⬇️ 拖拽 PDF 文件到这里 ⬇️", 
-                            bg=COLORS['bg_medium'], fg=COLORS['text_dim'],
-                            font=('微软雅黑', 10), height=3, relief="flat", cursor="hand2")
-        drop_zone.grid(row=2, column=0, columnspan=2, sticky="ew", pady=15)
-        
+        # 注册拖拽 - 扩展到整个界面
+        setup_drag_drop(self, self.hard_pdf_src)
+        setup_drag_drop(main_frame, self.hard_pdf_src)
+        setup_drag_drop(label_source, self.hard_pdf_src)
         setup_drag_drop(entry, self.hard_pdf_src)
-        setup_drag_drop(drop_zone, self.hard_pdf_src)
 
         # 让输入框拉伸
         main_frame.columnconfigure(0, weight=1)
 
         # --- 4. 选项与控制区 ---
         ctrl_frame = tk.Frame(main_frame, bg=COLORS['bg_dark'])
-        ctrl_frame.grid(row=3, column=0, columnspan=2, sticky="ew", pady=10)
-        
+        ctrl_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=10)
+        setup_drag_drop(ctrl_frame, self.hard_pdf_src)
+
         # 精度选择
-        tk.Label(ctrl_frame, text="显示精度: ", bg=COLORS['bg_dark'], fg=COLORS['text']).pack(side="left")
+        label_precision = tk.Label(ctrl_frame, text="显示精度: ", bg=COLORS['bg_dark'], fg=COLORS['text'])
+        label_precision.pack(side="left")
+        setup_drag_drop(label_precision, self.hard_pdf_src)
         
         style = ttk.Style()
         style.configure('Tech.TRadiobutton', background=COLORS['bg_dark'], foreground=COLORS['text'])
@@ -87,15 +88,21 @@ class HardnessFrame(tk.Frame):
         # --- 5. 结果列表区 ---
         # 使用自定义背景色的 ScrollableFrame
         self.list_container = tk.Frame(main_frame, bg=COLORS['bg_medium'], padx=2, pady=2)
-        self.list_container.grid(row=4, column=0, columnspan=2, sticky="nsew", pady=10)
+        self.list_container.grid(row=3, column=0, columnspan=2, sticky="nsew", pady=10)
         main_frame.rowconfigure(4, weight=1) # 让列表区占用剩余高度
+        setup_drag_drop(self.list_container, self.hard_pdf_src)
 
         self.hard_scroll = ScrollableFrame(self.list_container, style_bg=COLORS['bg_medium'])
         self.hard_scroll.pack(fill="both", expand=True)
-        
+        setup_drag_drop(self.hard_scroll, self.hard_pdf_src)
+        setup_drag_drop(self.hard_scroll.canvas, self.hard_pdf_src)
+        setup_drag_drop(self.hard_scroll.scrollable_frame, self.hard_pdf_src)
+
         # 初始提示
-        tk.Label(self.hard_scroll.scrollable_frame, text="暂无数据，请先提取...", 
-                bg=COLORS['bg_medium'], fg=COLORS['text_dim'], font=('微软雅黑', 10)).pack(pady=40)
+        initial_label = tk.Label(self.hard_scroll.scrollable_frame, text="暂无数据，请先提取...",
+                bg=COLORS['bg_medium'], fg=COLORS['text_dim'], font=('微软雅黑', 10))
+        initial_label.pack(pady=40)
+        setup_drag_drop(initial_label, self.hard_pdf_src)
 
     def start_extract(self):
         p = self.hard_pdf_src.get()

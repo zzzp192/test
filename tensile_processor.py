@@ -1,3 +1,31 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+育材堂报告助手 V3.7 - 拉伸数据处理模块
+
+软件名称：育材堂报告助手
+版本号：V3.7
+开发单位：育材堂
+开发完成日期：2024年
+
+模块功能：
+    提供拉伸试验数据的提取、统计计算和PPT报告生成功能。
+
+主要功能：
+    - 从Word文档提取拉伸试验数据
+    - 从Excel文件提取拉伸试验数据
+    - 自动识别试样编号和分组
+    - 计算平均值和标准差统计
+    - 动态生成PPT报告表格
+    - 支持Ag参数的可选显示
+
+数据提取字段：
+    - 试样编号、厚度、Rp（屈服强度）
+    - Rm（抗拉强度）、Ag（最大力总延伸率）、A（断后延伸率）
+
+Copyright (c) 2024 育材堂. All rights reserved.
+"""
+
 import docx
 import openpyxl 
 import statistics
@@ -46,13 +74,19 @@ def extract_from_docx(docx_path):
             group_name = clean_id
             sample_num = "1"
 
+        # 屈服强度和抗拉强度四舍五入取整，A和Ag保留1位小数
+        rp_val = to_float(cells[8].text)
+        rm_val = to_float(cells[9].text)
+        ag_val = to_float(cells[10].text)
+        a_val = to_float(cells[12].text)
+        
         item = {
             "id_num": sample_num,
             "thick": cells[3].text.strip(), # Word保持不变，如果Word也要改B列需确认位置
-            "Rp": to_float(cells[8].text),
-            "Rm": to_float(cells[9].text),
-            "Ag": to_float(cells[10].text),
-            "A":  to_float(cells[12].text),
+            "Rp": round(rp_val) if rp_val else 0,
+            "Rm": round(rm_val) if rm_val else 0,
+            "Ag": round(ag_val, 1) if ag_val else 0.0,
+            "A":  round(a_val, 1) if a_val else 0.0,
             "has_note": has_note
         }
 
@@ -97,13 +131,19 @@ def extract_from_excel(xlsx_path):
             ag_val = row[8] if len(row) > 8 else 0
             a_val  = row[10] if len(row) > 10 else 0
             
+            # 屈服强度和抗拉强度四舍五入取整，A和Ag保留1位小数
+            rp_float = to_float(rp_val)
+            rm_float = to_float(rm_val)
+            ag_float = to_float(ag_val)
+            a_float = to_float(a_val)
+            
             item = {
                 "id_num": sample_num,
                 "thick": str(thick_val) if thick_val is not None else "",
-                "Rp": to_float(rp_val),
-                "Rm": to_float(rm_val),
-                "Ag": to_float(ag_val),
-                "A":  to_float(a_val),
+                "Rp": round(rp_float) if rp_float else 0,
+                "Rm": round(rm_float) if rm_float else 0,
+                "Ag": round(ag_float, 1) if ag_float else 0.0,
+                "A":  round(a_float, 1) if a_float else 0.0,
                 "has_note": has_note
             }
             

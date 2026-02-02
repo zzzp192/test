@@ -1,3 +1,25 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+育材堂报告助手 V3.7 - 硬度数据处理模块
+
+软件名称：育材堂报告助手
+版本号：V3.7
+开发单位：育材堂
+开发完成日期：2024年
+
+模块功能：
+    提供PDF格式硬度报告的数据提取功能。
+
+主要功能：
+    - 从PDF文件中提取硬度测量数据表格
+    - 自动识别统计表（包含Mean和SD列）
+    - 提取平均值和标准差数据
+    - 自动编号分组
+
+Copyright (c) 2024 育材堂. All rights reserved.
+"""
+
 import pdfplumber
 
 def parse_hardness_report(file_path):

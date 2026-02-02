@@ -1,3 +1,30 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+育材堂报告助手 V3.7 - VDA弯曲数据处理模块
+
+软件名称：育材堂报告助手
+版本号：V3.7
+开发单位：育材堂
+开发完成日期：2024年
+
+模块功能：
+    提供VDA弯曲试验数据的提取、统计计算和PPT报告生成功能。
+
+主要功能：
+    - 从Excel/CSV文件提取VDA弯曲试验数据
+    - 自动识别试样编号和分组
+    - 单位自动转换（N→kN）
+    - 计算平均值和标准差统计
+    - 动态生成PPT报告表格
+
+数据提取字段：
+    - 试样编号、公称厚度、最大力
+    - 压头位移、弯曲角度
+
+Copyright (c) 2024 育材堂. All rights reserved.
+"""
+
 import pandas as pd
 import os
 from pptx import Presentation
