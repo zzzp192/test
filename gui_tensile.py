@@ -22,7 +22,7 @@ class TensileFrame(tk.Frame):
         frame.pack(fill="x", padx=25, pady=25)
         
         self.v_tensile_src = tk.StringVar()
-        self.v_include_ag = tk.BooleanVar(value=True)
+        self.v_elongation_mode = tk.StringVar(value="ag")
         
         # 文件选择
         label_source = tk.Label(frame, text="选择原始数据文件 (Word/Excel) | 💡 可拖拽到整个界面任意位置", bg=COLORS['bg_dark'], fg=COLORS['text'], font=('微软雅黑', 10))
@@ -45,8 +45,16 @@ class TensileFrame(tk.Frame):
         opt_frame = tk.Frame(frame, bg=COLORS['bg_dark'])
         opt_frame.grid(row=2, column=0, columnspan=4, sticky='w', pady=5)
         self._setup_dnd(opt_frame)
-        tk.Checkbutton(opt_frame, text="包含 Ag (最大力总延伸率)", variable=self.v_include_ag, bg=COLORS['bg_dark'], fg=COLORS['text'], selectcolor=COLORS['bg_medium'], font=('微软雅黑', 9)).pack(side="left")
-
+        tk.Label(opt_frame, text="延伸率字段:", bg=COLORS['bg_dark'], fg=COLORS['text'], font=('微软雅黑', 9)).pack(side="left", padx=(0, 8))
+        tk.Radiobutton(opt_frame, text="仅 A（断后伸长率）", variable=self.v_elongation_mode, value="a_only",
+                      bg=COLORS['bg_dark'], fg=COLORS['text'], selectcolor=COLORS['bg_medium'],
+                      font=('微软雅黑', 9), indicatoron=True).pack(side="left")
+        tk.Radiobutton(opt_frame, text="A + Ag（最大力延伸率）", variable=self.v_elongation_mode, value="ag",
+                      bg=COLORS['bg_dark'], fg=COLORS['text'], selectcolor=COLORS['bg_medium'],
+                      font=('微软雅黑', 9), indicatoron=True).pack(side="left", padx=(8, 0))
+        tk.Radiobutton(opt_frame, text="A + At（断裂总延伸率）", variable=self.v_elongation_mode, value="at",
+                      bg=COLORS['bg_dark'], fg=COLORS['text'], selectcolor=COLORS['bg_medium'],
+                      font=('微软雅黑', 9), indicatoron=True).pack(side="left", padx=(8, 0))
         # 绘图选项
         self.plot_frame = tk.LabelFrame(frame, text="绘图选项", padx=10, pady=10, bg=COLORS['bg_dark'], fg=COLORS['text_dim'], font=('微软雅黑', 9))
         self.plot_frame.grid(row=3, column=0, columnspan=4, sticky='ew', pady=10)
@@ -132,7 +140,7 @@ class TensileFrame(tk.Frame):
         out = get_unique_path(os.path.join(folder, f"拉伸报告_{fname}.pptx"))
 
         try:
-            msg = tensile_processor.generate_report(src, pptx, out, self.v_include_ag.get())
+            msg = tensile_processor.generate_report(src, pptx, out, elongation_mode=self.v_elongation_mode.get())
             if msg and "错误" not in msg:
                 messagebox.showinfo("成功", msg)
                 os.startfile(out)

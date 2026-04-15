@@ -33,10 +33,14 @@ import os
 import re
 import traceback 
 from pptx import Presentation
+from pptx.dml.color import RGBColor
 from ppt_utils import (
     to_float, delete_table_column, delete_table_row, insert_table_row as insert_row,
     duplicate_slide, format_cell, clean_cell_merge_info, THEME_COLOR, RED_COLOR
 )
+
+REPORT_TITLE_COLOR = RGBColor(15, 78, 82)
+ELONGATION_COLOR = RGBColor(255, 255, 255)
 
 # ================= 1. 数据提取模块 =================
 
@@ -78,6 +82,7 @@ def extract_from_docx(docx_path):
         rp_val = to_float(cells[8].text)
         rm_val = to_float(cells[9].text)
         ag_val = to_float(cells[10].text)
+        at_val = to_float(cells[11].text)
         a_val = to_float(cells[12].text)
         
         item = {
@@ -86,6 +91,7 @@ def extract_from_docx(docx_path):
             "Rp": round(rp_val) if rp_val else 0,
             "Rm": round(rm_val) if rm_val else 0,
             "Ag": round(ag_val, 1) if ag_val else 0.0,
+            "At": round(at_val, 1) if at_val else 0.0,
             "A":  round(a_val, 1) if a_val else 0.0,
             "has_note": has_note
         }
@@ -129,12 +135,14 @@ def extract_from_excel(xlsx_path):
             rp_val = row[6] if len(row) > 6 else 0
             rm_val = row[7] if len(row) > 7 else 0
             ag_val = row[8] if len(row) > 8 else 0
+            at_val = row[11] if len(row) > 11 else 0
             a_val  = row[10] if len(row) > 10 else 0
             
             # 屈服强度和抗拉强度四舍五入取整，A和Ag保留1位小数
             rp_float = to_float(rp_val)
             rm_float = to_float(rm_val)
             ag_float = to_float(ag_val)
+            at_float = to_float(at_val)
             a_float = to_float(a_val)
             
             item = {
@@ -143,6 +151,7 @@ def extract_from_excel(xlsx_path):
                 "Rp": round(rp_float) if rp_float else 0,
                 "Rm": round(rm_float) if rm_float else 0,
                 "Ag": round(ag_float, 1) if ag_float else 0.0,
+                "At": round(at_float, 1) if at_float else 0.0,
                 "A":  round(a_float, 1) if a_float else 0.0,
                 "has_note": has_note
             }
@@ -158,31 +167,64 @@ def extract_from_excel(xlsx_path):
     wb.close()
     return project_id, extracted_groups
 
-def calculate_stats(group_data):
-    if not group_data: return {}
+def calculate_stats(group_data, metric_key=None):
+    if not group_data:
+        return {}
+
     stats = {}
     for key in ['Rp', 'Rm']:
         vals = [d[key] for d in group_data]
         if len(vals) == 0:
-             stats[key] = "/"
-             continue
+            stats[key] = "/"
+            continue
         m = statistics.mean(vals)
         s = statistics.stdev(vals) if len(vals) > 1 else 0.0
         stats[key] = f"{m:.0f}±{s:.0f}"
-    for key in ['Ag', 'A']:
+
+    stats_keys = ['A']
+    if metric_key in ('Ag', 'At'):
+        stats_keys.insert(0, metric_key)
+    for key in stats_keys:
         vals = [d[key] for d in group_data]
         if len(vals) == 0:
-             stats[key] = "/"
-             continue
+            stats[key] = "/"
+            continue
         m = statistics.mean(vals)
         s = statistics.stdev(vals) if len(vals) > 1 else 0.0
         stats[key] = f"{m:.1f}±{s:.1f}"
     return stats
 
+
+def _color_project_title_text(slide, project_id):
+    if not project_id:
+        return
+    for shape in slide.shapes:
+        if not getattr(shape, "has_text_frame", False):
+            continue
+        tf = shape.text_frame
+        for p in tf.paragraphs:
+            if project_id not in p.text:
+                continue
+            if not p.runs:
+                p.add_run()
+            for run in p.runs:
+                run.font.color.rgb = REPORT_TITLE_COLOR
+
+
+def _update_metric_header(main_table, metric_key):
+    if len(main_table.rows) == 0 or len(main_table.columns) <= 5:
+        return
+    header_text = "At" if metric_key == "At" else "Ag"
+    format_cell(main_table.cell(0, 5), header_text, is_bold=True, color_rgb=ELONGATION_COLOR)
 # ================= 2. 主流程控制器 =================
 
-def generate_report(data_path, pptx_template_path, output_path, include_ag=True):
+def generate_report(data_path, pptx_template_path, output_path, include_ag=True, elongation_mode=None):
     try:
+        if elongation_mode not in ("a_only", "ag", "at"):
+            elongation_mode = "ag" if include_ag else "a_only"
+        metric_key = "Ag" if elongation_mode == "ag" else ("At" if elongation_mode == "at" else None)
+        include_metric = metric_key is not None
+
         # 1. 提取
         ext = os.path.splitext(data_path)[1].lower()
         if ext == ".docx":
@@ -225,6 +267,7 @@ def generate_report(data_path, pptx_template_path, output_path, include_ag=True)
                 if shape.has_text_frame and "项目号" in shape.text:
                     try: shape.text_frame.text = shape.text.replace("项目号", project_id)
                     except: pass
+            _color_project_title_text(slide, project_id)
 
             slide_tables = [s.table for s in slide.shapes if s.has_table]
             if not slide_tables: continue
@@ -232,10 +275,12 @@ def generate_report(data_path, pptx_template_path, output_path, include_ag=True)
 
             # --- 修改点 2: 如果不包含 Ag，删除第 6 列 (Index 5) ---
             # 列索引: 0=Group, 1=ID, 2=Thick, 3=Rp, 4=Rm, 5=Ag, 6=A
-            if not include_ag:
+            if not include_metric:
                 # 只有当表格确实有这么多列时才删除
                 if len(main_table.columns) >= 6:
-                    delete_table_column(main_table, 5) 
+                    delete_table_column(main_table, 5)
+            else:
+                _update_metric_header(main_table, metric_key)
             # --------------------------------------------------
 
             batch_groups = group_names[slide_idx*GROUPS_PER_SLIDE : (slide_idx+1)*GROUPS_PER_SLIDE]
@@ -269,7 +314,7 @@ def generate_report(data_path, pptx_template_path, output_path, include_ag=True)
                 if i < len(batch_groups):
                     g_name = batch_groups[i]
                     data = groups[g_name]
-                    stats = calculate_stats(data)
+                    stats = calculate_stats(data, metric_key=metric_key)
                     n_samples = len(data)
                     
                     # 动态增减行
@@ -305,8 +350,9 @@ def generate_report(data_path, pptx_template_path, output_path, include_ag=True)
                         if c_idx < len(row.cells): format_cell(row.cells[c_idx], str(item['Rm']))
                         c_idx += 1
                         
-                        if include_ag:
-                            if c_idx < len(row.cells): format_cell(row.cells[c_idx], str(item['Ag']))
+                        if include_metric:
+                            metric_val = item.get(metric_key, 0.0)
+                            if c_idx < len(row.cells): format_cell(row.cells[c_idx], str(metric_val))
                             c_idx += 1
                         
                         if c_idx < len(row.cells): format_cell(row.cells[c_idx], str(item['A']))
@@ -333,8 +379,8 @@ def generate_report(data_path, pptx_template_path, output_path, include_ag=True)
                     if s_idx < len(stat_row.cells): format_cell(stat_row.cells[s_idx], stats['Rm'], is_bold=True, color_rgb=THEME_COLOR)
                     s_idx += 1
                     
-                    if include_ag:
-                        if s_idx < len(stat_row.cells): format_cell(stat_row.cells[s_idx], stats['Ag'], is_bold=True, color_rgb=THEME_COLOR)
+                    if include_metric:
+                        if s_idx < len(stat_row.cells): format_cell(stat_row.cells[s_idx], stats[metric_key], is_bold=True, color_rgb=THEME_COLOR)
                         s_idx += 1
                         
                     if s_idx < len(stat_row.cells): format_cell(stat_row.cells[s_idx], stats['A'], is_bold=True, color_rgb=THEME_COLOR)

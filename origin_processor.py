@@ -44,33 +44,142 @@ import win32api
 import win32con
 import win32clipboard
 import ctypes
+import winreg
 
 # 延迟导入originpro，便于错误处理
 op = None
 
+MIN_ORIGIN_YEAR = 2019
+
+
+def _extract_year(text):
+    """Extract Origin year (e.g., 2018/2022/2024) from a text snippet."""
+    if not text:
+        return None
+    m = re.search(r"(20\d{2})", str(text))
+    return int(m.group(1)) if m else None
+
+
+def _get_installed_origin_years():
+    """Best-effort scan of Windows uninstall registry for installed Origin versions."""
+    years = set()
+    uninstall_roots = [
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+    ]
+
+    for hive, root in uninstall_roots:
+        try:
+            with winreg.OpenKey(hive, root) as key:
+                subkey_count = winreg.QueryInfoKey(key)[0]
+                for idx in range(subkey_count):
+                    try:
+                        subkey_name = winreg.EnumKey(key, idx)
+                        with winreg.OpenKey(key, subkey_name) as subkey:
+                            display_name = ""
+                            try:
+                                display_name = winreg.QueryValueEx(subkey, "DisplayName")[0]
+                            except Exception:
+                                pass
+                            if "origin" not in str(display_name).lower():
+                                continue
+                            year = _extract_year(display_name)
+                            if year:
+                                years.add(year)
+                    except Exception:
+                        continue
+        except Exception:
+            continue
+    return sorted(years)
+
+
+def _get_connected_origin_year():
+    """
+    Best-effort query connected Origin COM server version/year.
+    Returns (year, details_text).
+    """
+    detail_parts = []
+    for prog_id in ("Origin.ApplicationSI", "Origin.Application"):
+        try:
+            app = win32com.client.Dispatch(prog_id)
+            version = getattr(app, "Version", "")
+            path = getattr(app, "Path", "")
+            detail = f"{prog_id}, Version={version}, Path={path}"
+            detail_parts.append(detail)
+            year = _extract_year(version) or _extract_year(path)
+            if year:
+                return year, detail
+        except Exception as e:
+            detail_parts.append(f"{prog_id} unavailable: {e}")
+            continue
+
+    return None, " | ".join(detail_parts)
+
+
+def build_origin_runtime_error_message(err):
+    """User-facing troubleshooting message for plotting/runtime failures."""
+    return (
+        f"Origin 绘图失败：{err}\n\n"
+        "请检查以下项：\n"
+        "1. 仅启动一个 Origin（建议先关闭 2018，仅保留 2022+）。\n"
+        "2. 在目标 Origin 中启用 Python 连接（可执行 `doc -s`）。\n"
+        "3. 重新点击绘图；如仍失败，建议将高版本 Origin 设为默认 COM/自动化版本。"
+    )
+
 def init_origin():
-    """初始化Origin连接，返回(成功, 错误信息)"""
+    """初始化Origin连接并校验版本选择，返回(成功, 错误信息)。"""
     global op
     try:
         import originpro as _op
         op = _op
     except ImportError as e:
-        return False, f"无法导入originpro模块: {e}\n请确保已安装: pip install originpro"
+        return False, f"无法导入 originpro 模块: {e}\n请先安装: pip install originpro"
     except Exception as e:
-        return False, f"导入originpro时出错: {e}"
-    
-    # 尝试连接Origin
+        return False, f"导入 originpro 失败: {e}"
+
+    installed_years = _get_installed_origin_years()
+
     try:
-        # 检查Origin是否运行
         if not op.oext:
-            return False, "无法连接到Origin。\n\n可能原因:\n1. Origin未启动\n2. Origin版本不支持(需要Origin 2019或更高版本)\n3. Origin未执行'doc -s'命令启用Python连接\n\n解决方法:\n- 请先启动Origin 2019或更高版本\n- 在Origin中执行菜单: 连接器 > Python > 启用Python连接\n- 或在Origin命令窗口输入: doc -s"
+            installed_hint = f"\n检测到已安装版本: {installed_years}" if installed_years else ""
+            return False, (
+                "无法连接到 Origin。\n\n"
+                "请先启动 Origin 2019 或更高版本，并启用 Python 连接（执行 `doc -s`）。"
+                f"{installed_hint}"
+            )
         op.set_show(True)
+
+        connected_year, detail = _get_connected_origin_year()
+        latest_installed = max(installed_years) if installed_years else None
+
+        if connected_year is not None and connected_year < MIN_ORIGIN_YEAR:
+            return False, (
+                f"当前连接到 Origin {connected_year}（不支持）。\n"
+                f"本工具要求 Origin {MIN_ORIGIN_YEAR}+。\n\n"
+                f"已安装版本: {installed_years or '未知'}\n"
+                "请关闭低版本 Origin，仅启动高版本后重试。"
+            )
+
+        if connected_year is not None and latest_installed and connected_year < latest_installed:
+            return False, (
+                f"检测到多版本 Origin，当前连接到了较低版本：Origin {connected_year}。\n"
+                f"本机检测到更高版本：Origin {latest_installed}。\n\n"
+                "请关闭低版本 Origin（如 2018），仅启动高版本（如 2022）后重试。"
+            )
+
+        if connected_year is None and latest_installed and latest_installed >= MIN_ORIGIN_YEAR:
+            print(f"[Origin] Version probe unavailable, COM detail: {detail}")
+
         return True, None
     except Exception as e:
         err_msg = str(e)
-        if "Origin" in err_msg or "COM" in err_msg:
-            return False, f"连接Origin失败: {err_msg}\n\n可能原因:\n1. Origin版本过低(需要Origin 2019+)\n2. Origin未正确安装\n3. Origin未以管理员权限运行"
-        return False, f"连接Origin时出错: {err_msg}"
+        installed_hint = f"\n检测到已安装版本: {installed_years}" if installed_years else ""
+        return False, (
+            f"连接 Origin 失败: {err_msg}\n\n"
+            f"请确认使用 Origin {MIN_ORIGIN_YEAR}+，并在 Origin 中启用 Python 连接（`doc -s`）。"
+            f"{installed_hint}"
+        )
 
 def find_data_sheet(file_path):
     """
@@ -503,11 +612,10 @@ def plot_tensile_to_ppt(file_path, template_path=None, lines_per_graph=12, swap_
     """
     import win32com.client
     import pythoncom
-    
-    try:
-        if op.oext:
-            op.set_show(True)
-    except: pass
+
+    success, err = init_origin()
+    if not success:
+        raise RuntimeError(err)
     
     sample_ids = get_tensile_sample_ids(file_path)
     print(f"提取到试样编号: {sample_ids}")
@@ -637,11 +745,10 @@ def plot_vda_to_ppt(file_path, template_path=None, lines_per_graph=12, swap_xy=T
     """
     import win32com.client
     import pythoncom
-    
-    try:
-        if op.oext:
-            op.set_show(True)
-    except: pass
+
+    success, err = init_origin()
+    if not success:
+        raise RuntimeError(err)
     
     sample_ids = get_sample_ids_from_excel(file_path)
     print(f"VDA提取到试样编号: {sample_ids}")
@@ -809,10 +916,9 @@ def plot_phase_change(file_paths, template_path=None, width_cm=11.0, height_cm=8
     """
     import win32com.client
     import pythoncom
-    try:
-        if op.oext:
-            op.set_show(True)
-    except: pass
+    success, err = init_origin()
+    if not success:
+        raise RuntimeError(err)
     
     if isinstance(file_paths, str):
         file_paths = [file_paths]

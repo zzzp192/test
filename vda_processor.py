@@ -35,6 +35,8 @@ from ppt_utils import (
     duplicate_slide, THEME_COLOR
 )
 
+REPORT_TITLE_COLOR = RGBColor(15, 78, 82)
+
 def process_vda_report(excel_path, ppt_template, output_path, force_unit='kN', include_disp=True):
     """
     处理VDA弯曲数据并生成PPT报告
@@ -124,6 +126,7 @@ def process_vda_report(excel_path, ppt_template, output_path, force_unit='kN', i
             
         slide = prs.slides[slide_idx]
         replace_text_in_slide(slide, "项目号", project_id)
+        colorize_project_title(slide, project_id)
         
         tables = [s.table for s in slide.shapes if s.has_table]
         if not tables: continue
@@ -211,9 +214,7 @@ def fill_group_data(table, data, group_name, start_row, n_rows, unit, include_di
         format_cell_text(table, r, 1, str(row['Number']))
         format_cell_text(table, r, 2, f"{to_float(row['Thickness']):.2f}")
         
-        # 注意：这里保留了单位转换逻辑
         val_f = to_float(row['MaxForce'])
-        if unit == 'kN': val_f /= 1000.0
         format_cell_text(table, r, 3, f"{val_f:.1f}")
         
         current_col = 4
@@ -232,9 +233,7 @@ def fill_stats_row(table, data, r_idx, unit, include_disp):
     
     set_stat_cell(table.cell(r_idx, 2), data['Thickness'], 1, 1.0, custom_color)
     
-    # 统计行单位转换
     f_vals = pd.to_numeric(data['MaxForce'], errors='coerce')
-    if unit == 'kN': f_vals = f_vals / 1000.0
     set_stat_cell(table.cell(r_idx, 3), f_vals, 1, 1.0, custom_color)
     
     current_col = 4
@@ -281,6 +280,20 @@ def replace_text_in_slide(slide, old_txt, new_txt):
             for p in shape.text_frame.paragraphs:
                 if old_txt in p.text:
                     p.text = p.text.replace(old_txt, new_txt)
+
+def colorize_project_title(slide, project_id):
+    if not project_id:
+        return
+    for shape in slide.shapes:
+        if not getattr(shape, "has_text_frame", False):
+            continue
+        for p in shape.text_frame.paragraphs:
+            if project_id not in p.text:
+                continue
+            if not p.runs:
+                p.add_run()
+            for run in p.runs:
+                run.font.color.rgb = REPORT_TITLE_COLOR
 
 def add_table_row(table, clone_idx):
     import copy
