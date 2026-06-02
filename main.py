@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-育材堂报告助手 V3.13 - 主程序入口模块
+育材堂报告助手 V3.14 - 主程序入口模块
 
 软件名称：育材堂报告助手
-版本号：V3.13
+版本号：V3.14
 开发单位：育材堂
 开发者：张桢
 开发完成日期：2026年1月
@@ -57,7 +57,7 @@ from gui_shared import COLORS, update_theme_colors
 # ============================================================
 # 版本信息
 # ============================================================
-__version__ = "3.13"
+__version__ = "3.14"
 __author__ = "张桢"
 __copyright__ = "Copyright (c) 2026 育材堂"
 __license__ = "Proprietary"
@@ -87,7 +87,7 @@ class MainApp:
             root: TkinterDnD根窗口实例
         """
         self.root = root
-        self.root.title("🔬 育材堂报告助手 V3.13")
+        self.root.title("🔬 育材堂报告助手 V3.14")
         self.root.geometry("900x750")
         
         self.current_theme: str = 'light'

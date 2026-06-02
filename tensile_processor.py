@@ -102,21 +102,85 @@ def extract_from_docx(docx_path):
 
     return project_id, extracted_groups
 
+def _normalize_excel_header(value):
+    if value is None:
+        return ""
+    return re.sub(r"\s+", "", str(value)).lower()
+
+
+def _classify_tensile_header(value):
+    header = _normalize_excel_header(value)
+    if not header:
+        return None
+    if "试样编号" in header:
+        return "sample_id"
+    if "试样厚度" in header or header.startswith("厚度"):
+        return "thick"
+    if "规定塑性延伸强度" in header or header == "rp":
+        return "Rp"
+    if "抗拉强度" in header or header == "rm":
+        return "Rm"
+    if "最大力塑性延伸率" in header or header == "ag":
+        return "Ag"
+    if "断裂总延伸率" in header or header == "at":
+        return "At"
+    if "断后伸长率" in header or header == "a":
+        return "A"
+    return None
+
+
+def _find_tensile_summary_layout(wb):
+    required_fields = {"sample_id", "thick", "Rp", "Rm", "A"}
+    for sheet in wb.worksheets:
+        max_header_row = min(sheet.max_row, 20)
+        for row_idx, row in enumerate(
+            sheet.iter_rows(min_row=1, max_row=max_header_row, values_only=True),
+            start=1,
+        ):
+            columns = {}
+            for col_idx, value in enumerate(row):
+                field = _classify_tensile_header(value)
+                if field and field not in columns:
+                    columns[field] = col_idx
+            if required_fields.issubset(columns):
+                return sheet, row_idx + 1, columns
+
+    if "Sheet1" in wb.sheetnames:
+        return wb["Sheet1"], 1, {
+            "sample_id": 0,
+            "thick": 1,
+            "Rp": 6,
+            "Rm": 7,
+            "Ag": 8,
+            "A": 10,
+            "At": 11,
+        }
+    return None, 1, {}
+
+
+def _get_row_value(row, columns, field, default=0):
+    col_idx = columns.get(field)
+    if col_idx is None or col_idx >= len(row):
+        return default
+    return row[col_idx]
+
+
 def extract_from_excel(xlsx_path):
     project_id = os.path.splitext(os.path.basename(xlsx_path))[0]
     wb = openpyxl.load_workbook(xlsx_path, data_only=True)
-    
-    if "Sheet1" in wb.sheetnames:
-        sheet = wb["Sheet1"]
-    else:
-        sheet = wb.worksheets[0]
-    
+    sheet, min_data_row, columns = _find_tensile_summary_layout(wb)
     extracted_groups = {}
+
+    if sheet is None:
+        wb.close()
+        return project_id, extracted_groups
     
-    for row in sheet.iter_rows(min_row=1, values_only=True):
-        if not row or row[0] is None: continue
-        
-        raw_id = str(row[0]).strip()
+    for row in sheet.iter_rows(min_row=min_data_row, values_only=True):
+        raw_id_value = _get_row_value(row, columns, "sample_id", default=None)
+        if raw_id_value is None:
+            continue
+
+        raw_id = str(raw_id_value).strip()
         clean_id = re.sub(r'[\(（].*?[\)）]', '', raw_id).strip()
         has_note = (clean_id != raw_id)
 
@@ -128,15 +192,12 @@ def extract_from_excel(xlsx_path):
         sample_num = parts[1]
         
         try:
-            # --- 修改点 1: 抓取 B 列 (Index 1) 作为宽度/厚度 ---
-            thick_val = row[1] if len(row) > 1 else "" 
-            # -----------------------------------------------
-            
-            rp_val = row[6] if len(row) > 6 else 0
-            rm_val = row[7] if len(row) > 7 else 0
-            ag_val = row[8] if len(row) > 8 else 0
-            at_val = row[11] if len(row) > 11 else 0
-            a_val  = row[10] if len(row) > 10 else 0
+            thick_val = _get_row_value(row, columns, "thick", default="")
+            rp_val = _get_row_value(row, columns, "Rp")
+            rm_val = _get_row_value(row, columns, "Rm")
+            ag_val = _get_row_value(row, columns, "Ag")
+            at_val = _get_row_value(row, columns, "At")
+            a_val = _get_row_value(row, columns, "A")
             
             # 屈服强度和抗拉强度四舍五入取整，A和Ag保留1位小数
             rp_float = to_float(rp_val)

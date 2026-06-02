@@ -604,6 +604,55 @@ def get_tensile_sample_ids(file_path):
     return sample_ids
 
 
+def _is_tensile_curve_columns(columns):
+    if len(columns) < 2 or len(columns) % 2 != 0:
+        return False
+
+    def normalize(value):
+        return re.sub(r"\s+", "", str(value)).lower()
+
+    for idx in range(0, len(columns), 2):
+        stress = normalize(columns[idx])
+        strain = normalize(columns[idx + 1])
+        if not ("应力" in stress or "stress" in stress):
+            return False
+        if not ("应变" in strain or "strain" in strain):
+            return False
+    return True
+
+
+def select_tensile_curve_sheet(file_path_or_excel):
+    xls = file_path_or_excel
+    owns_excel_file = False
+    if not hasattr(xls, "sheet_names"):
+        xls = pd.ExcelFile(file_path_or_excel)
+        owns_excel_file = True
+
+    try:
+        preferred_sheets = [
+            sheet for sheet in xls.sheet_names
+            if "曲线" in sheet
+        ]
+        preferred_sheets.extend(
+            sheet for sheet in xls.sheet_names
+            if "原始数据" in sheet and sheet not in preferred_sheets
+        )
+        preferred_sheets.extend(
+            sheet for sheet in xls.sheet_names
+            if sheet not in preferred_sheets
+        )
+
+        for sheet in preferred_sheets:
+            df = pd.read_excel(xls, sheet_name=sheet, nrows=0)
+            if _is_tensile_curve_columns(list(df.columns)):
+                return sheet
+
+        raise ValueError("未找到有效的拉伸曲线数据工作表")
+    finally:
+        if owns_excel_file:
+            xls.close()
+
+
 def plot_tensile_to_ppt(file_path, template_path=None, lines_per_graph=12, swap_xy=True, append_to_ppt=None, width_cm=15.0, height_cm=12.0, copy_to_ppt=True):
     """拉伸报告Origin绘图，可选是否导出到PPT
     
@@ -621,13 +670,8 @@ def plot_tensile_to_ppt(file_path, template_path=None, lines_per_graph=12, swap_
     print(f"提取到试样编号: {sample_ids}")
     
     xls = pd.ExcelFile(file_path)
-    df = None
-    for sheet in xls.sheet_names:
-        if '曲线' in sheet:
-            df = pd.read_excel(xls, sheet_name=sheet)
-            break
-    if df is None:
-        df = pd.read_excel(file_path)
+    curve_sheet = select_tensile_curve_sheet(xls)
+    df = pd.read_excel(xls, sheet_name=curve_sheet)
     
     cols = list(df.columns)
     new_cols, reordered_cols = [], []
