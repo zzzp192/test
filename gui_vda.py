@@ -4,7 +4,11 @@ import os
 import vda_processor
 import origin_processor
 import config_manager
-from gui_shared import resource_path, browse_file, get_unique_path, COLORS
+from gui_shared import (
+    resource_path, browse_file, get_unique_path, COLORS,
+    create_button, create_checkbutton, create_entry, create_field_label,
+    create_page, create_section, create_spinbox
+)
 from tkinterdnd2 import DND_FILES
 
 class VDAFrame(tk.Frame):
@@ -16,33 +20,28 @@ class VDAFrame(tk.Frame):
         for widget in self.winfo_children():
             widget.destroy()
         self.configure(bg=COLORS['bg_dark'])
-        
-        frame = tk.LabelFrame(self, text="📐 VDA弯曲报告生成", padx=20, pady=20,
-                             bg=COLORS['bg_dark'], fg=COLORS['accent'], font=('微软雅黑', 11, 'bold'))
-        frame.pack(fill="x", padx=25, pady=25)
-        
+
+        page = create_page(self)
         self.v_vda_src = tk.StringVar()
-        
-        # 文件选择
-        label_source = tk.Label(frame, text="选择原始数据文件 (Excel) | 💡 可拖拽到整个界面任意位置", bg=COLORS['bg_dark'], fg=COLORS['text'], font=('微软雅黑', 10))
-        label_source.grid(row=0, column=0, columnspan=4, sticky='w', pady=(0,10))
 
-        entry = tk.Entry(frame, textvariable=self.v_vda_src, width=50, font=('Consolas', 10), bg=COLORS['input_bg'], fg=COLORS['text'],
-                        insertbackground=COLORS['accent'], relief='flat', highlightthickness=1, highlightbackground=COLORS['border'], highlightcolor=COLORS['accent'])
-        entry.grid(row=1, column=0, columnspan=3, padx=(0,10), pady=5, sticky='ew', ipady=8)
+        data_section = create_section(page, "VDA 弯曲报告", "导入 Excel 原始数据，生成弯曲报告或绘制 Origin 曲线。")
+        create_field_label(data_section, "原始数据文件").grid(row=0, column=0, columnspan=2, sticky='w')
+        entry = create_entry(data_section, self.v_vda_src, width=54, mono=True)
+        entry.grid(row=1, column=0, padx=(0, 10), pady=(6, 0), sticky='ew', ipady=9)
+        create_button(
+            data_section,
+            "浏览文件",
+            lambda: browse_file(self.v_vda_src, [("Excel Files", "*.xlsx *.xls")]),
+            "secondary",
+        ).grid(row=1, column=1, sticky='ew', pady=(6, 0))
+        data_section.columnconfigure(0, weight=1)
 
-        tk.Button(frame, text="📂 浏览", command=lambda: browse_file(self.v_vda_src, [("Excel Files", "*.xlsx *.xls")]),
-                 bg=COLORS['bg_light'], fg=COLORS['text'], font=('微软雅黑', 9), relief='flat', cursor='hand2', padx=15).grid(row=1, column=3, padx=5, ipady=5)
-
-        # 注册拖拽 - 扩展到整个界面
         self._setup_dnd(self)
-        self._setup_dnd(frame)
-        self._setup_dnd(label_source)
+        self._setup_dnd(page)
+        self._setup_dnd(data_section)
         self._setup_dnd(entry)
 
-        # 绘图选项
-        self.plot_frame = tk.LabelFrame(frame, text="绘图选项", padx=10, pady=10, bg=COLORS['bg_dark'], fg=COLORS['text_dim'], font=('微软雅黑', 9))
-        self.plot_frame.grid(row=2, column=0, columnspan=4, sticky='ew', pady=10)
+        self.plot_frame = create_section(page, "绘图选项", "设置 Origin 模板、每图曲线数、XY 列与输出尺寸。")
         self._setup_dnd(self.plot_frame)
 
         self.o_template = tk.StringVar(value=config_manager.get_template('vda_template'))
@@ -52,39 +51,31 @@ class VDAFrame(tk.Frame):
         self.o_height = tk.DoubleVar(value=12.0)
         self.o_copy_to_ppt = tk.BooleanVar(value=False)  # 默认不复制到PPT
 
-        tk.Label(self.plot_frame, text="模板:", bg=COLORS['bg_dark'], fg=COLORS['text']).grid(row=0, column=0, sticky='w')
-        tk.Entry(self.plot_frame, textvariable=self.o_template, width=25, bg=COLORS['input_bg'], fg=COLORS['text']).grid(row=0, column=1, sticky='ew', padx=5)
-        tk.Button(self.plot_frame, text="选择", command=self.browse_template, bg=COLORS['bg_light'], fg=COLORS['text'], relief='flat').grid(row=0, column=2)
+        create_field_label(self.plot_frame, "模板").grid(row=0, column=0, sticky='w')
+        create_entry(self.plot_frame, self.o_template, width=28).grid(row=1, column=0, columnspan=2, sticky='ew', padx=(0, 10), pady=(6, 12), ipady=8)
+        create_button(self.plot_frame, "选择", self.browse_template, "secondary").grid(row=1, column=2, sticky='ew', pady=(6, 12))
+        create_field_label(self.plot_frame, "每图曲线数").grid(row=0, column=3, sticky='w', padx=(18, 0))
+        create_spinbox(self.plot_frame, 1, 50, self.o_lines, width=6).grid(row=1, column=3, sticky='w', padx=(18, 0), pady=(6, 12), ipady=5)
+        create_checkbutton(self.plot_frame, "调换 XY 列", self.o_swap_xy).grid(row=1, column=4, sticky='w', padx=(18, 0), pady=(6, 12))
 
-        tk.Label(self.plot_frame, text="每图曲线数:", bg=COLORS['bg_dark'], fg=COLORS['text']).grid(row=0, column=3, padx=(15,5))
-        tk.Spinbox(self.plot_frame, from_=1, to=50, textvariable=self.o_lines, width=5, bg=COLORS['input_bg'], fg=COLORS['text']).grid(row=0, column=4)
-
-        tk.Checkbutton(self.plot_frame, text="调换XY列", variable=self.o_swap_xy, bg=COLORS['bg_dark'], fg=COLORS['text'], selectcolor=COLORS['bg_medium']).grid(row=0, column=5, padx=15)
-
-        # 图片尺寸选项（放在同一行）
-        size_frame = tk.Frame(self.plot_frame, bg=COLORS['bg_dark'])
-        size_frame.grid(row=1, column=0, columnspan=6, sticky='w', pady=(5,0))
+        size_frame = tk.Frame(self.plot_frame, bg=COLORS['bg_medium'])
+        size_frame.grid(row=2, column=0, columnspan=5, sticky='w')
         self._setup_dnd(size_frame)
 
-        tk.Label(size_frame, text="图片宽(cm):", bg=COLORS['bg_dark'], fg=COLORS['text']).pack(side='left')
-        tk.Spinbox(size_frame, from_=5, to=30, textvariable=self.o_width, width=5, bg=COLORS['input_bg'], fg=COLORS['text'], increment=0.5).pack(side='left', padx=(5,15))
-        tk.Label(size_frame, text="图片高(cm):", bg=COLORS['bg_dark'], fg=COLORS['text']).pack(side='left')
-        tk.Spinbox(size_frame, from_=5, to=25, textvariable=self.o_height, width=5, bg=COLORS['input_bg'], fg=COLORS['text'], increment=0.5).pack(side='left', padx=5)
-
-        # 复制到PPT选项
-        tk.Checkbutton(size_frame, text="复制到PPT", variable=self.o_copy_to_ppt, bg=COLORS['bg_dark'], fg=COLORS['text'], selectcolor=COLORS['bg_medium']).pack(side='left', padx=(20,0))
+        create_field_label(size_frame, "图片宽(cm)").pack(side='left')
+        create_spinbox(size_frame, 5, 30, self.o_width, width=6, increment=0.5).pack(side='left', padx=(8, 18), ipady=4)
+        create_field_label(size_frame, "图片高(cm)").pack(side='left')
+        create_spinbox(size_frame, 5, 25, self.o_height, width=6, increment=0.5).pack(side='left', padx=(8, 18), ipady=4)
+        create_checkbutton(size_frame, "复制到 PPT", self.o_copy_to_ppt).pack(side='left', padx=(8, 0))
 
         self.plot_frame.columnconfigure(1, weight=1)
 
-        # 按钮放最后一排
-        btn_frame = tk.Frame(frame, bg=COLORS['bg_dark'])
-        btn_frame.grid(row=3, column=0, columnspan=4, pady=15, sticky='ew')
+        btn_frame = tk.Frame(page, bg=COLORS['bg_dark'])
+        btn_frame.pack(fill='x', pady=(2, 0))
         self._setup_dnd(btn_frame)
 
-        tk.Button(btn_frame, text="📋 仅提取数据", command=self.run_extract_only, bg=COLORS['accent'], fg=COLORS['button_fg'], font=("微软雅黑", 10, "bold"), relief='flat', cursor='hand2').pack(side='left', expand=True, fill='x', padx=2, ipady=10)
-        tk.Button(btn_frame, text="📈 仅绘图", command=self.run_plot_only, bg=COLORS['success'], fg=COLORS['button_fg'], font=("微软雅黑", 10, "bold"), relief='flat', cursor='hand2').pack(side='left', expand=True, fill='x', padx=2, ipady=10)
-        
-        frame.columnconfigure(1, weight=1)
+        create_button(btn_frame, "仅提取数据", self.run_extract_only, "primary").pack(side='left', expand=True, fill='x', padx=(0, 6))
+        create_button(btn_frame, "仅绘图", self.run_plot_only, "cta").pack(side='left', expand=True, fill='x', padx=(6, 0))
 
     def _setup_dnd(self, widget):
         """设置拖拽"""

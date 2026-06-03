@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-育材堂报告助手 V3.14 - 主程序入口模块
+育材堂报告助手 V3.15 - 主程序入口模块
 
 软件名称：育材堂报告助手
-版本号：V3.14
+版本号：V3.15
 开发单位：育材堂
 开发者：张桢
 开发完成日期：2026年1月
@@ -52,12 +52,12 @@ from gui_tensile import TensileFrame
 from gui_vda import VDAFrame
 from gui_hardness import HardnessFrame
 from gui_origin import OriginFrame
-from gui_shared import COLORS, update_theme_colors
+from gui_shared import COLORS, FONTS, create_button, update_theme_colors
 
 # ============================================================
 # 版本信息
 # ============================================================
-__version__ = "3.14"
+__version__ = "3.15"
 __author__ = "张桢"
 __copyright__ = "Copyright (c) 2026 育材堂"
 __license__ = "Proprietary"
@@ -87,8 +87,9 @@ class MainApp:
             root: TkinterDnD根窗口实例
         """
         self.root = root
-        self.root.title("🔬 育材堂报告助手 V3.14")
+        self.root.title("育材堂报告助手 V3.15")
         self.root.geometry("900x750")
+        self.root.minsize(860, 700)
         
         self.current_theme: str = 'light'
         self.notebook: Optional[ttk.Notebook] = None
@@ -116,20 +117,20 @@ class MainApp:
         
         # 创建标签页容器
         self.notebook = ttk.Notebook(self.root, style='Tech.TNotebook')
-        self.notebook.pack(fill="both", expand=True, padx=15, pady=(0, 10))
+        self.notebook.pack(fill="both", expand=True, padx=20, pady=(0, 12))
         
         # 添加功能标签页
         self.tab_tensile = TensileFrame(self.notebook)
-        self.notebook.add(self.tab_tensile, text="  ⚡ 拉伸报告  ")
+        self.notebook.add(self.tab_tensile, text="  拉伸报告  ")
         
         self.tab_vda = VDAFrame(self.notebook)
-        self.notebook.add(self.tab_vda, text="  📐 VDA弯曲  ")
+        self.notebook.add(self.tab_vda, text="  VDA 弯曲  ")
 
         self.tab_hard = HardnessFrame(self.notebook)
-        self.notebook.add(self.tab_hard, text="  💎 硬度提取  ")
+        self.notebook.add(self.tab_hard, text="  硬度提取  ")
 
         self.tab_origin = OriginFrame(self.notebook)
-        self.notebook.add(self.tab_origin, text="  🔥 相变点绘图  ")
+        self.notebook.add(self.tab_origin, text="  相变点绘图  ")
         
         # 数据源同步：拉伸报告数据变化时同步到Origin
         self.tab_tensile.v_tensile_src.trace_add('write', self.sync_data_source)
@@ -144,15 +145,21 @@ class MainApp:
         """
         style = ttk.Style()
         style.theme_use('clam')
-        style.configure('Tech.TNotebook', background=COLORS['bg_dark'], borderwidth=0)
+        style.configure('Tech.TNotebook', background=COLORS['bg_dark'], borderwidth=0, tabmargins=[0, 0, 0, 0])
         style.configure('Tech.TNotebook.Tab',
                        background=COLORS['bg_medium'],
                        foreground=COLORS['text'],
-                       padding=[20, 12],
-                       font=('微软雅黑', 11, 'bold'))
+                       borderwidth=0,
+                       padding=[22, 12],
+                       font=FONTS['body_bold'])
         style.map('Tech.TNotebook.Tab',
-                 background=[('selected', COLORS['bg_light'])],
-                 foreground=[('selected', COLORS['accent'])])
+                 background=[('selected', COLORS['accent_soft']), ('active', COLORS['bg_light'])],
+                 foreground=[('selected', COLORS['accent']), ('active', COLORS['text'])])
+        style.configure('Vertical.TScrollbar',
+                        background=COLORS['bg_light'],
+                        troughcolor=COLORS['bg_medium'],
+                        bordercolor=COLORS['border'],
+                        arrowcolor=COLORS['text_dim'])
 
     def create_header(self) -> None:
         """
@@ -160,33 +167,29 @@ class MainApp:
         
         包含应用程序图标、标题和主题切换按钮。
         """
-        header = tk.Frame(self.root, bg=COLORS['bg_medium'], height=70)
-        header.pack(fill='x', padx=15, pady=15)
+        header = tk.Frame(self.root, bg=COLORS['bg_medium'], height=76)
+        header.pack(fill='x', padx=20, pady=18)
         header.pack_propagate(False)
         
         # 左侧标题区域
         title_frame = tk.Frame(header, bg=COLORS['bg_medium'])
-        title_frame.pack(side='left', padx=20, pady=10)
-        
-        tk.Label(title_frame, text="🔬", font=('Segoe UI Emoji', 28),
-                bg=COLORS['bg_medium'], fg=COLORS['accent']).pack(side='left')
+        title_frame.pack(side='left', padx=18, pady=12)
         
         text_frame = tk.Frame(title_frame, bg=COLORS['bg_medium'])
-        text_frame.pack(side='left', padx=15)
+        text_frame.pack(side='left')
         
-        tk.Label(text_frame, text="试验报告助手", font=('微软雅黑', 18, 'bold'),
+        tk.Label(text_frame, text="育材堂报告助手", font=FONTS['display'],
                 bg=COLORS['bg_medium'], fg=COLORS['text']).pack(anchor='w')
+        tk.Label(text_frame, text="材料试验报告处理与 Origin 绘图工具  V3.15", font=FONTS['small'],
+                bg=COLORS['bg_medium'], fg=COLORS['text_dim']).pack(anchor='w', pady=(3, 0))
         
         # 右侧控制区域
         right_frame = tk.Frame(header, bg=COLORS['bg_medium'])
-        right_frame.pack(side='right', padx=20)
+        right_frame.pack(side='right', padx=18)
 
-        icon = "🌞" if self.current_theme == 'dark' else "🌙"
-        btn_theme = tk.Button(right_frame, text=icon + " 切换主题", 
-                             command=self.toggle_theme,
-                             bg=COLORS['bg_light'], fg=COLORS['text'],
-                             relief='flat', cursor='hand2', font=('微软雅黑', 9))
-        btn_theme.pack(side='left', padx=15)
+        text = "切换亮色" if self.current_theme == 'dark' else "切换深色"
+        btn_theme = create_button(right_frame, text, self.toggle_theme, "secondary")
+        btn_theme.pack(side='left')
         
     def create_status_bar(self) -> None:
         """
@@ -194,11 +197,13 @@ class MainApp:
         
         显示系统状态和Origin连接状态。
         """
-        status = tk.Frame(self.root, bg=COLORS['bg_medium'], height=35)
-        status.pack(fill='x', side='bottom', padx=15, pady=(0, 15))
+        status = tk.Frame(self.root, bg=COLORS['bg_medium'], height=40)
+        status.pack(fill='x', side='bottom', padx=20, pady=(0, 16))
         status.pack_propagate(False)
-        tk.Label(status, text="● 系统就绪 | Origin Link: ON", font=('微软雅黑', 9),
-                bg=COLORS['bg_medium'], fg=COLORS['success']).pack(side='left', padx=15)
+        tk.Label(status, text="● 系统就绪", font=FONTS['small'],
+                bg=COLORS['bg_medium'], fg=COLORS['success']).pack(side='left', padx=16)
+        tk.Label(status, text="Origin Link: ON", font=FONTS['small'],
+                bg=COLORS['bg_medium'], fg=COLORS['text_dim']).pack(side='left', padx=8)
 
     def toggle_theme(self) -> None:
         """

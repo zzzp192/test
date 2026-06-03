@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-育材堂报告助手 V3.11 - 共享UI组件模块
+育材堂报告助手 V3.15 - 共享UI组件模块
 
 软件名称：育材堂报告助手
-版本号：V3.11
+版本号：V3.15
 开发单位：育材堂
 开发者：张桢
 开发完成日期：2026年1月
@@ -40,7 +40,7 @@ from tkinterdnd2 import DND_FILES
 # ============================================================
 # 版本信息
 # ============================================================
-__version__ = "3.11"
+__version__ = "3.15"
 __author__ = "张桢"
 __copyright__ = "Copyright (c) 2026 育材堂"
 
@@ -49,39 +49,67 @@ __copyright__ = "Copyright (c) 2026 育材堂"
 # ============================================================
 THEMES: Dict[str, Dict[str, str]] = {
     'dark': {
-        'bg_dark': '#1a1a2e',
-        'bg_medium': '#16213e',
-        'bg_light': '#0f3460',
-        'accent': '#00d9ff',
-        'accent_hover': '#00b8d4',
-        'text': '#e8e8e8',
-        'text_dim': '#a0a0a0',
-        'success': '#00e676',
-        'warning': '#ffc107',
-        'border': '#2a3f5f',
-        'input_bg': '#0d1b2a',
-        'button_bg': '#00d9ff',
-        'button_fg': '#1a1a2e',
-        'row_even': '#1a1a2e',
-        'row_odd': '#202a44'
+        'bg_dark': '#111827',
+        'bg_medium': '#1F2937',
+        'bg_light': '#374151',
+        'accent': '#14B8A6',
+        'accent_hover': '#2DD4BF',
+        'accent_soft': '#134E4A',
+        'cta': '#F97316',
+        'cta_hover': '#FB923C',
+        'text': '#F9FAFB',
+        'text_dim': '#CBD5E1',
+        'success': '#22C55E',
+        'warning': '#F59E0B',
+        'danger': '#EF4444',
+        'border': '#334155',
+        'input_bg': '#0F172A',
+        'button_bg': '#14B8A6',
+        'button_fg': '#FFFFFF',
+        'row_even': '#172033',
+        'row_odd': '#111827',
+        'shadow': '#0B1120'
     },
     'light': {
-        'bg_dark': '#f0f2f5',
-        'bg_medium': '#ffffff',
-        'bg_light': '#e1e4e8',
-        'accent': '#007bff',
-        'accent_hover': '#0056b3',
-        'text': '#333333',
-        'text_dim': '#666666',
-        'success': '#28a745',
-        'warning': '#ffc107',
-        'border': '#ced4da',
-        'input_bg': '#ffffff',
-        'button_bg': '#007bff',
-        'button_fg': '#ffffff',
-        'row_even': '#ffffff',
-        'row_odd': '#f8f9fa'
+        'bg_dark': '#F6F8FB',
+        'bg_medium': '#FFFFFF',
+        'bg_light': '#E8F5F3',
+        'accent': '#0D9488',
+        'accent_hover': '#0F766E',
+        'accent_soft': '#CCFBF1',
+        'cta': '#F97316',
+        'cta_hover': '#EA580C',
+        'text': '#134E4A',
+        'text_dim': '#475569',
+        'success': '#16A34A',
+        'warning': '#D97706',
+        'danger': '#DC2626',
+        'border': '#DCE7E5',
+        'input_bg': '#FFFFFF',
+        'button_bg': '#0D9488',
+        'button_fg': '#FFFFFF',
+        'row_even': '#FFFFFF',
+        'row_odd': '#F8FAFC',
+        'shadow': '#E2E8F0'
     }
+}
+
+FONTS: Dict[str, tuple] = {
+    'display': ('Microsoft YaHei UI', 19, 'bold'),
+    'title': ('Microsoft YaHei UI', 13, 'bold'),
+    'subtitle': ('Microsoft YaHei UI', 9),
+    'body': ('Microsoft YaHei UI', 10),
+    'body_bold': ('Microsoft YaHei UI', 10, 'bold'),
+    'small': ('Microsoft YaHei UI', 9),
+    'mono': ('Consolas', 10),
+}
+
+SPACING: Dict[str, int] = {
+    'page_x': 24,
+    'page_y': 20,
+    'section_gap': 14,
+    'control_gap': 10,
+    'card_pad': 16,
 }
 
 # 当前活动的颜色配置（默认使用亮色主题）
@@ -100,6 +128,148 @@ def update_theme_colors(mode: str = 'dark') -> None:
     new_theme = THEMES.get(mode, THEMES['dark'])
     COLORS.clear()
     COLORS.update(new_theme)
+
+
+# ============================================================
+# Win11 风格共享控件
+# ============================================================
+def apply_hover(widget: tk.Widget, normal_bg: str, hover_bg: str) -> tk.Widget:
+    """Add a lightweight hover state to clickable Tk widgets."""
+    widget.bind("<Enter>", lambda _e: widget.configure(bg=hover_bg))
+    widget.bind("<Leave>", lambda _e: widget.configure(bg=normal_bg))
+    return widget
+
+
+def create_page(parent: tk.Widget) -> tk.Frame:
+    page = tk.Frame(parent, bg=COLORS['bg_dark'])
+    page.pack(fill="both", expand=True, padx=SPACING['page_x'], pady=SPACING['page_y'])
+    return page
+
+
+def create_section(parent: tk.Widget, title: str, subtitle: str = "") -> tk.Frame:
+    outer = tk.Frame(parent, bg=COLORS['border'])
+    outer.pack(fill="x", pady=(0, SPACING['section_gap']))
+
+    inner = tk.Frame(outer, bg=COLORS['bg_medium'], padx=SPACING['card_pad'], pady=SPACING['card_pad'])
+    inner.pack(fill="both", expand=True, padx=1, pady=1)
+
+    tk.Label(inner, text=title, bg=COLORS['bg_medium'], fg=COLORS['text'], font=FONTS['title']).pack(anchor="w")
+    if subtitle:
+        tk.Label(inner, text=subtitle, bg=COLORS['bg_medium'], fg=COLORS['text_dim'], font=FONTS['subtitle']).pack(anchor="w", pady=(2, 12))
+    else:
+        tk.Frame(inner, bg=COLORS['bg_medium'], height=8).pack(fill="x")
+    content = tk.Frame(inner, bg=COLORS['bg_medium'])
+    content.pack(fill="both", expand=True)
+    return content
+
+
+def create_field_label(parent: tk.Widget, text: str) -> tk.Label:
+    return tk.Label(parent, text=text, bg=COLORS['bg_medium'], fg=COLORS['text_dim'], font=FONTS['small'])
+
+
+def create_entry(parent: tk.Widget, textvariable: tk.Variable, width: int = 40, mono: bool = False) -> tk.Entry:
+    return tk.Entry(
+        parent,
+        textvariable=textvariable,
+        width=width,
+        font=FONTS['mono'] if mono else FONTS['body'],
+        bg=COLORS['input_bg'],
+        fg=COLORS['text'],
+        insertbackground=COLORS['accent'],
+        relief='flat',
+        bd=0,
+        highlightthickness=1,
+        highlightbackground=COLORS['border'],
+        highlightcolor=COLORS['accent'],
+    )
+
+
+def create_button(parent: tk.Widget, text: str, command: Callable, variant: str = "secondary") -> tk.Button:
+    palette = {
+        "primary": (COLORS['accent'], COLORS['accent_hover'], COLORS['button_fg']),
+        "cta": (COLORS['cta'], COLORS['cta_hover'], COLORS['button_fg']),
+        "success": (COLORS['success'], COLORS['accent_hover'], COLORS['button_fg']),
+        "secondary": (COLORS['bg_light'], COLORS['accent_soft'], COLORS['text']),
+    }
+    bg, hover, fg = palette.get(variant, palette["secondary"])
+    btn = tk.Button(
+        parent,
+        text=text,
+        command=command,
+        bg=bg,
+        fg=fg,
+        activebackground=hover,
+        activeforeground=fg,
+        relief='flat',
+        bd=0,
+        cursor='hand2',
+        font=FONTS['body_bold'] if variant in ("primary", "cta", "success") else FONTS['body'],
+        padx=18,
+        pady=9,
+    )
+    return apply_hover(btn, bg, hover)
+
+
+def create_spinbox(parent: tk.Widget, from_: float, to: float, textvariable: tk.Variable, width: int = 6, increment: float = 1) -> tk.Spinbox:
+    return tk.Spinbox(
+        parent,
+        from_=from_,
+        to=to,
+        textvariable=textvariable,
+        width=width,
+        bg=COLORS['input_bg'],
+        fg=COLORS['text'],
+        buttonbackground=COLORS['bg_light'],
+        insertbackground=COLORS['accent'],
+        relief='flat',
+        highlightthickness=1,
+        highlightbackground=COLORS['border'],
+        highlightcolor=COLORS['accent'],
+        font=FONTS['body'],
+        increment=increment,
+    )
+
+
+def create_checkbutton(parent: tk.Widget, text: str, variable: tk.Variable, command: Optional[Callable] = None) -> tk.Checkbutton:
+    return tk.Checkbutton(
+        parent,
+        text=text,
+        variable=variable,
+        command=command,
+        bg=COLORS['bg_medium'],
+        fg=COLORS['text'],
+        activebackground=COLORS['bg_medium'],
+        activeforeground=COLORS['accent'],
+        selectcolor=COLORS['input_bg'],
+        font=FONTS['body'],
+    )
+
+
+def create_radiobutton(parent: tk.Widget, text: str, variable: tk.Variable, value: Any, command: Optional[Callable] = None) -> tk.Radiobutton:
+    return tk.Radiobutton(
+        parent,
+        text=text,
+        variable=variable,
+        value=value,
+        command=command,
+        bg=COLORS['bg_medium'],
+        fg=COLORS['text'],
+        activebackground=COLORS['bg_medium'],
+        activeforeground=COLORS['accent'],
+        selectcolor=COLORS['input_bg'],
+        font=FONTS['body'],
+    )
+
+
+def create_status_text(parent: tk.Widget, text: str, tone: str = "muted") -> tk.Label:
+    color = {
+        "muted": COLORS['text_dim'],
+        "success": COLORS['success'],
+        "warning": COLORS['warning'],
+        "danger": COLORS['danger'],
+        "accent": COLORS['accent'],
+    }.get(tone, COLORS['text_dim'])
+    return tk.Label(parent, text=text, bg=COLORS['bg_medium'], fg=color, font=FONTS['body'])
 
 
 # ============================================================

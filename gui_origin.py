@@ -27,7 +27,10 @@ import os
 from tkinterdnd2 import DND_FILES
 import origin_processor
 import config_manager
-from gui_shared import COLORS
+from gui_shared import (
+    COLORS, create_button, create_checkbutton, create_entry, create_field_label,
+    create_page, create_section, create_spinbox
+)
 
 class OriginFrame(tk.Frame):
     def __init__(self, parent):
@@ -40,21 +43,26 @@ class OriginFrame(tk.Frame):
             widget.destroy()
         self.configure(bg=COLORS['bg_dark'])
 
-        main_frame = tk.LabelFrame(self, text="🔥 相变点绘图", padx=20, pady=20,
-                             bg=COLORS['bg_dark'], fg=COLORS['accent'],
-                             font=('微软雅黑', 11, 'bold'))
-        main_frame.pack(fill="both", expand=True, padx=25, pady=25)
-
+        page = create_page(self)
         self.o_template_path = tk.StringVar(value=config_manager.get_template('phase_template'))
 
-        label_hint = tk.Label(main_frame, text="拖拽CSV文件到下方区域（支持多文件）| 💡 可拖拽到整个界面任意位置",
-                bg=COLORS['bg_dark'], fg=COLORS['text'],
-                font=('微软雅黑', 10))
-        label_hint.grid(row=0, column=0, columnspan=3, sticky='w', pady=(0,5))
+        files_section = create_section(page, "相变点绘图", "添加一个或多个 CSV 文件，批量生成相变点曲线。")
 
-        self.drop_zone = tk.Listbox(main_frame, height=8, bg=COLORS['input_bg'], fg=COLORS['text'],
-                                   selectmode=tk.EXTENDED, font=('Consolas', 9))
-        self.drop_zone.grid(row=1, column=0, columnspan=3, sticky='nsew', pady=10)
+        self.drop_zone = tk.Listbox(
+            files_section,
+            height=8,
+            bg=COLORS['input_bg'],
+            fg=COLORS['text'],
+            selectbackground=COLORS['accent'],
+            selectforeground=COLORS['button_fg'],
+            highlightthickness=1,
+            highlightbackground=COLORS['border'],
+            highlightcolor=COLORS['accent'],
+            relief='flat',
+            selectmode=tk.EXTENDED,
+            font=('Consolas', 9),
+        )
+        self.drop_zone.grid(row=0, column=0, columnspan=2, sticky='nsew')
 
         def do_register():
             try:
@@ -65,56 +73,41 @@ class OriginFrame(tk.Frame):
 
         self.drop_zone.after(100, do_register)
 
-        # 注册拖拽 - 扩展到整个界面
         self._setup_dnd(self)
-        self._setup_dnd(main_frame)
-        self._setup_dnd(label_hint)
+        self._setup_dnd(page)
+        self._setup_dnd(files_section)
 
-        btn_frame = tk.Frame(main_frame, bg=COLORS['bg_dark'])
-        btn_frame.grid(row=2, column=0, columnspan=3, sticky='ew', pady=5)
+        btn_frame = tk.Frame(files_section, bg=COLORS['bg_medium'])
+        btn_frame.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(12, 0))
         self._setup_dnd(btn_frame)
 
-        tk.Button(btn_frame, text="添加文件", command=self.add_files,
-                 bg=COLORS['bg_light'], fg=COLORS['text'], relief='flat').pack(side='left', padx=5)
-        tk.Button(btn_frame, text="清空列表", command=self.clear_files,
-                 bg=COLORS['bg_light'], fg=COLORS['text'], relief='flat').pack(side='left', padx=5)
+        create_button(btn_frame, "添加文件", self.add_files, "secondary").pack(side='left', padx=(0, 8))
+        create_button(btn_frame, "清空列表", self.clear_files, "secondary").pack(side='left')
+        files_section.columnconfigure(0, weight=1)
 
-        label_template = tk.Label(main_frame, text="绘图模板:", bg=COLORS['bg_dark'], fg=COLORS['text'])
-        label_template.grid(row=3, column=0, sticky='w', pady=10)
-        tk.Entry(main_frame, textvariable=self.o_template_path, width=30, bg=COLORS['input_bg'], fg=COLORS['text']).grid(row=3, column=1, sticky='ew', padx=5)
-        tk.Button(main_frame, text="选择", command=self.browse_template, bg=COLORS['bg_light'], fg=COLORS['text'], relief='flat').grid(row=3, column=2)
+        option_section = create_section(page, "绘图选项", "设置 Origin 模板、图片尺寸和 PPT 输出方式。")
+        create_field_label(option_section, "绘图模板").grid(row=0, column=0, sticky='w')
+        create_entry(option_section, self.o_template_path, width=34).grid(row=1, column=0, sticky='ew', padx=(0, 10), pady=(6, 12), ipady=8)
+        create_button(option_section, "选择", self.browse_template, "secondary").grid(row=1, column=1, sticky='ew', pady=(6, 12))
 
-        # 图片尺寸选项
         self.o_width = tk.DoubleVar(value=11.0)
         self.o_height = tk.DoubleVar(value=8.8)
         self.o_copy_to_ppt = tk.BooleanVar(value=False)  # 默认不复制到PPT
 
-        size_frame = tk.Frame(main_frame, bg=COLORS['bg_dark'])
-        size_frame.grid(row=4, column=0, columnspan=3, sticky='w', pady=5)
+        size_frame = tk.Frame(option_section, bg=COLORS['bg_medium'])
+        size_frame.grid(row=2, column=0, columnspan=2, sticky='w')
         self._setup_dnd(size_frame)
 
-        label_width = tk.Label(size_frame, text="图片宽(cm):", bg=COLORS['bg_dark'], fg=COLORS['text'])
-        label_width.pack(side='left')
-        self._setup_dnd(label_width)
+        create_field_label(size_frame, "图片宽(cm)").pack(side='left')
+        create_spinbox(size_frame, 5, 30, self.o_width, width=6, increment=0.5).pack(side='left', padx=(8, 18), ipady=4)
+        create_field_label(size_frame, "图片高(cm)").pack(side='left')
+        create_spinbox(size_frame, 5, 25, self.o_height, width=6, increment=0.5).pack(side='left', padx=(8, 18), ipady=4)
+        create_checkbutton(size_frame, "复制到 PPT", self.o_copy_to_ppt).pack(side='left', padx=(8, 0))
+        option_section.columnconfigure(0, weight=1)
 
-        tk.Spinbox(size_frame, from_=5, to=30, textvariable=self.o_width, width=5, bg=COLORS['input_bg'], fg=COLORS['text'], increment=0.5).pack(side='left', padx=(5,15))
-
-        label_height = tk.Label(size_frame, text="图片高(cm):", bg=COLORS['bg_dark'], fg=COLORS['text'])
-        label_height.pack(side='left')
-        self._setup_dnd(label_height)
-
-        tk.Spinbox(size_frame, from_=5, to=25, textvariable=self.o_height, width=5, bg=COLORS['input_bg'], fg=COLORS['text'], increment=0.5).pack(side='left', padx=5)
-
-        # 复制到PPT选项
-        tk.Checkbutton(size_frame, text="复制到PPT", variable=self.o_copy_to_ppt, bg=COLORS['bg_dark'], fg=COLORS['text'], selectcolor=COLORS['bg_medium']).pack(side='left', padx=(20,0))
-
-        btn_plot = tk.Button(main_frame, text="🚀 开始绘图", command=self.run_plot,
-                 bg=COLORS['success'], fg=COLORS['button_fg'], font=("微软雅黑", 12, "bold"),
-                 relief='flat', cursor='hand2')
-        btn_plot.grid(row=5, column=0, columnspan=3, sticky='ew', ipady=10, pady=15)
+        btn_plot = create_button(page, "开始绘图", self.run_plot, "cta")
+        btn_plot.pack(fill='x', pady=(2, 0))
         self._setup_dnd(btn_plot)
-
-        main_frame.columnconfigure(1, weight=1)
 
     def on_drop(self, event):
         files = self.parse_drop_data(event.data)
