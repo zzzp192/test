@@ -46,6 +46,15 @@ import win32clipboard
 import ctypes
 import winreg
 
+from curve_data import (
+    get_sample_ids_from_excel as shared_get_sample_ids_from_excel,
+    get_tensile_sample_ids as shared_get_tensile_sample_ids,
+    is_tensile_curve_columns,
+    load_tensile_xy_dataframe,
+    load_vda_xy_dataframe,
+    select_tensile_curve_sheet as shared_select_tensile_curve_sheet,
+)
+
 # 延迟导入originpro，便于错误处理
 op = None
 
@@ -328,17 +337,7 @@ def plot_in_origin(file_path, template_path=None, lines_per_graph=1, swap_xy=Fal
 
 def get_sample_ids_from_excel(file_path, data_type='tensile'):
     """从Excel提取试样编号列表"""
-    xls = pd.ExcelFile(file_path)
-    sample_ids = []
-    
-    for sheet_name in xls.sheet_names:
-        df = pd.read_excel(xls, sheet_name=sheet_name)
-        for col in df.columns:
-            if '试样编号' in str(col):
-                sample_ids = [str(v) for v in df[col] if pd.notna(v) and str(v).strip()]
-                if sample_ids:
-                    return sample_ids
-    return sample_ids
+    return shared_get_sample_ids_from_excel(file_path)
 
 
 def export_graph_to_image(graph, output_path):
@@ -581,325 +580,105 @@ def append_origin_graphs_to_ppt(graph_names, ppt_path, folder=None):
 
 def get_tensile_sample_ids(file_path):
     """从拉伸报告Excel提取试样编号列表（处理特殊格式）"""
-    xls = pd.ExcelFile(file_path)
-    sample_ids = []
-    
-    for sheet_name in xls.sheet_names:
-        # 读取整个sheet，不设置header
-        df_raw = pd.read_excel(xls, sheet_name=sheet_name, header=None)
-        
-        # 遍历每一行，找到包含"试样编号"的行
-        for row_idx in range(min(10, len(df_raw))):  # 只检查前10行
-            row_values = [str(v) for v in df_raw.iloc[row_idx] if pd.notna(v)]
-            if any('试样编号' in v for v in row_values):
-                # 找到试样编号所在的列
-                for col_idx, val in enumerate(df_raw.iloc[row_idx]):
-                    if pd.notna(val) and '试样编号' in str(val):
-                        # 提取该列下面的所有非空值
-                        sample_ids = [str(v) for v in df_raw.iloc[row_idx+1:, col_idx] 
-                                     if pd.notna(v) and str(v).strip()]
-                        if sample_ids:
-                            print(f"从第{row_idx+1}行找到试样编号列，提取到{len(sample_ids)}个编号")
-                            return sample_ids
-    return sample_ids
+    return shared_get_tensile_sample_ids(file_path)
 
 
 def _is_tensile_curve_columns(columns):
-    if len(columns) < 2 or len(columns) % 2 != 0:
-        return False
-
-    def normalize(value):
-        return re.sub(r"\s+", "", str(value)).lower()
-
-    for idx in range(0, len(columns), 2):
-        stress = normalize(columns[idx])
-        strain = normalize(columns[idx + 1])
-        if not ("应力" in stress or "stress" in stress):
-            return False
-        if not ("应变" in strain or "strain" in strain):
-            return False
-    return True
+    return is_tensile_curve_columns(columns)
 
 
 def select_tensile_curve_sheet(file_path_or_excel):
-    xls = file_path_or_excel
-    owns_excel_file = False
-    if not hasattr(xls, "sheet_names"):
-        xls = pd.ExcelFile(file_path_or_excel)
-        owns_excel_file = True
-
-    try:
-        preferred_sheets = [
-            sheet for sheet in xls.sheet_names
-            if "曲线" in sheet
-        ]
-        preferred_sheets.extend(
-            sheet for sheet in xls.sheet_names
-            if "原始数据" in sheet and sheet not in preferred_sheets
-        )
-        preferred_sheets.extend(
-            sheet for sheet in xls.sheet_names
-            if sheet not in preferred_sheets
-        )
-
-        for sheet in preferred_sheets:
-            df = pd.read_excel(xls, sheet_name=sheet, nrows=0)
-            if _is_tensile_curve_columns(list(df.columns)):
-                return sheet
-
-        raise ValueError("未找到有效的拉伸曲线数据工作表")
-    finally:
-        if owns_excel_file:
-            xls.close()
+    return shared_select_tensile_curve_sheet(file_path_or_excel)
 
 
-def plot_tensile_to_ppt(file_path, template_path=None, lines_per_graph=12, swap_xy=True, append_to_ppt=None, width_cm=15.0, height_cm=12.0, copy_to_ppt=True):
-    """拉伸报告Origin绘图，可选是否导出到PPT
-    
-    参数:
-        copy_to_ppt: 是否复制图形到PPT，默认True。如果为False，只在Origin中绘图。
-    """
-    import win32com.client
-    import pythoncom
-
+def _plot_dataframe_in_origin(
+    dataframe,
+    file_path,
+    template_path,
+    lines_per_graph,
+    graph_suffix,
+    project_prefix,
+):
+    """Create Origin graphs only; PPT export is handled by matplotlib_ppt."""
     success, err = init_origin()
     if not success:
         raise RuntimeError(err)
-    
-    sample_ids = get_tensile_sample_ids(file_path)
-    print(f"提取到试样编号: {sample_ids}")
-    
-    xls = pd.ExcelFile(file_path)
-    curve_sheet = select_tensile_curve_sheet(xls)
-    df = pd.read_excel(xls, sheet_name=curve_sheet)
-    
-    cols = list(df.columns)
-    new_cols, reordered_cols = [], []
-    sample_idx = 0
-    for i in range(0, len(cols) - 1, 2):
-        reordered_cols.extend([cols[i + 1], cols[i]])
-        new_cols.append(cols[i + 1])
-        new_cols.append(sample_ids[sample_idx] if sample_idx < len(sample_ids) else cols[i])
-        sample_idx += 1
-    if len(cols) % 2 == 1:
-        reordered_cols.append(cols[-1])
-        new_cols.append(cols[-1])
-    
-    df = df[reordered_cols]
-    df.columns = new_cols
-    
+
     wb = op.new_book()
+    if not wb:
+        raise RuntimeError("Origin 创建工作簿失败")
     wks = wb[0]
-    wks.from_df(df)
-    
+    wks.from_df(dataframe)
+
     num_cols = wks.cols
     for col_idx in range(num_cols):
         op.lt_exec(f'wks.col{col_idx + 1}.type = {4 if col_idx % 2 == 0 else 1};')
-    
+
     y_cols = list(range(1, num_cols, 2))
-    chunks = [y_cols[i:i + lines_per_graph] for i in range(0, len(y_cols), lines_per_graph)]
-    
+    if not y_cols:
+        raise ValueError("曲线数据不足，至少需要一组 XY 列")
+    chunks = [
+        y_cols[index:index + lines_per_graph]
+        for index in range(0, len(y_cols), lines_per_graph)
+    ]
+
     folder = os.path.dirname(file_path)
     fname = os.path.splitext(os.path.basename(file_path))[0]
-    
-    # 如果不需要复制到PPT，只在Origin中绘图
-    if not copy_to_ppt:
-        created_graphs = []
-        for i, chunk in enumerate(chunks):
-            graph = op.new_graph(template=template_path) if template_path else op.new_graph()
-            layer = graph[0]
-            for y_idx in chunk:
-                layer.add_plot(wks, coly=y_idx, colx=y_idx - 1, type='line')
-            layer.rescale()
-            gname = f"{fname}_T{i+1}"
-            graph.name = gname
-            created_graphs.append(gname)
-            print(f"已完成第{i+1}/{len(chunks)}张图表")
-        
-        # 保存Origin项目
-        opju_path = os.path.join(folder, f"拉伸曲线_{fname}.opju")
-        save_origin_project(opju_path)
-        
-        return f"成功！已在Origin中创建 {len(created_graphs)} 张图表\nOrigin项目: {opju_path}"
-    
-    # 以下是复制到PPT的逻辑
-    # cm转pt (1cm ≈ 28.35pt)
-    width_pt = width_cm * 28.35
-    height_pt = height_cm * 28.35
-    
-    # 初始化
-    pythoncom.CoInitialize()
-    op.lt_exec('doc -s;')
-    time.sleep(0.3)
-    
-    ppt_app = win32com.client.Dispatch("PowerPoint.Application")
-    ppt_app.Visible = True
-    
-    # 如果有已存在的PPT，打开它并添加图形到每页右侧
-    if append_to_ppt and os.path.exists(append_to_ppt):
-        prs = ppt_app.Presentations.Open(os.path.abspath(append_to_ppt))
-        ppt_path = append_to_ppt
-        
-        for i, chunk in enumerate(chunks):
-            graph = op.new_graph(template=template_path) if template_path else op.new_graph()
-            layer = graph[0]
-            for y_idx in chunk:
-                layer.add_plot(wks, coly=y_idx, colx=y_idx - 1, type='line')
-            layer.rescale()
-            gname = f"{fname}_T{i+1}"
-            graph.name = gname
-            
-            slide_idx = i + 1
-            if slide_idx <= prs.Slides.Count:
-                copy_graph_to_ppt_ole(gname, prs, slide_idx, width_pt=width_pt, height_pt=height_pt, right_side=True)
-            print(f"已完成第{i+1}/{len(chunks)}张图表")
-    else:
-        prs = ppt_app.Presentations.Add()
-        ppt_path = os.path.join(folder, f"拉伸曲线_{fname}.pptx")
-        
-        for i, chunk in enumerate(chunks):
-            graph = op.new_graph(template=template_path) if template_path else op.new_graph()
-            layer = graph[0]
-            for y_idx in chunk:
-                layer.add_plot(wks, coly=y_idx, colx=y_idx - 1, type='line')
-            layer.rescale()
-            gname = f"{fname}_T{i+1}"
-            graph.name = gname
-            
-            prs.Slides.Add(prs.Slides.Count + 1, 12)
-            copy_graph_to_ppt_ole(gname, prs, prs.Slides.Count, width_pt=width_pt, height_pt=height_pt, right_side=False)
-            print(f"已完成第{i+1}/{len(chunks)}张图表")
-    
-    opju_path = os.path.join(folder, f"拉伸曲线_{fname}.opju")
-    save_origin_project(opju_path)
-    
-    try:
-        prs.SaveAs(os.path.abspath(ppt_path))
-        prs.Close()
-    except: pass
-    
-    return f"成功！已创建 {len(chunks)} 张图表\nPPT: {ppt_path}\nOrigin项目: {opju_path}"
+    created_graphs = []
+    valid_template = template_path if template_path and os.path.exists(template_path) else None
 
-
-def plot_vda_to_ppt(file_path, template_path=None, lines_per_graph=12, swap_xy=True, width_cm=15.0, height_cm=12.0, copy_to_ppt=True):
-    """VDA报告Origin绘图，可选是否导出到PPT
-    
-    参数:
-        copy_to_ppt: 是否复制图形到PPT，默认True。如果为False，只在Origin中绘图。
-    """
-    import win32com.client
-    import pythoncom
-
-    success, err = init_origin()
-    if not success:
-        raise RuntimeError(err)
-    
-    sample_ids = get_sample_ids_from_excel(file_path)
-    print(f"VDA提取到试样编号: {sample_ids}")
-    
-    xls = pd.ExcelFile(file_path)
-    df = None
-    for sheet in xls.sheet_names:
-        if '原始数据' in sheet or 'VDA' in sheet:
-            df = pd.read_excel(xls, sheet_name=sheet)
-            if '力_1' in str(df.columns) or '力_' in ' '.join(str(c) for c in df.columns):
-                break
-    if df is None:
-        df = pd.read_excel(file_path)
-    
-    cols = list(df.columns)
-    new_cols, reordered_cols = [], []
-    sample_idx = 0
-    for i in range(0, len(cols) - 1, 2):
-        reordered_cols.extend([cols[i + 1], cols[i]])
-        new_cols.append(cols[i + 1])
-        new_cols.append(sample_ids[sample_idx] if sample_idx < len(sample_ids) else cols[i])
-        sample_idx += 1
-    if len(cols) % 2 == 1:
-        reordered_cols.append(cols[-1])
-        new_cols.append(cols[-1])
-    
-    df = df[reordered_cols]
-    df.columns = new_cols
-    
-    wb = op.new_book()
-    wks = wb[0]
-    wks.from_df(df)
-    
-    num_cols = wks.cols
-    for col_idx in range(num_cols):
-        op.lt_exec(f'wks.col{col_idx + 1}.type = {4 if col_idx % 2 == 0 else 1};')
-    
-    y_cols = list(range(1, num_cols, 2))
-    chunks = [y_cols[i:i + lines_per_graph] for i in range(0, len(y_cols), lines_per_graph)]
-    
-    folder = os.path.dirname(file_path)
-    fname = os.path.splitext(os.path.basename(file_path))[0]
-    
-    # 如果不需要复制到PPT，只在Origin中绘图
-    if not copy_to_ppt:
-        created_graphs = []
-        for i, chunk in enumerate(chunks):
-            graph = op.new_graph(template=template_path) if template_path else op.new_graph()
-            layer = graph[0]
-            for y_idx in chunk:
-                layer.add_plot(wks, coly=y_idx, colx=y_idx - 1, type='line')
-            layer.rescale()
-            gname = f"{fname}_V{i+1}"
-            graph.name = gname
-            created_graphs.append(gname)
-            print(f"已完成第{i+1}/{len(chunks)}张图表")
-        
-        # 保存Origin项目
-        opju_path = os.path.join(folder, f"VDA曲线_{fname}.opju")
-        save_origin_project(opju_path)
-        
-        return f"成功！已在Origin中创建 {len(created_graphs)} 张图表\nOrigin项目: {opju_path}"
-    
-    # 以下是复制到PPT的逻辑
-    ppt_path = os.path.join(folder, f"VDA曲线_{fname}.pptx")
-    
-    # cm转pt (1cm ≈ 28.35pt)
-    width_pt = width_cm * 28.35
-    height_pt = height_cm * 28.35
-    
-    # 初始化PPT
-    pythoncom.CoInitialize()
-    op.lt_exec('doc -s;')
-    time.sleep(0.3)
-    
-    ppt_app = win32com.client.Dispatch("PowerPoint.Application")
-    ppt_app.Visible = True
-    prs = ppt_app.Presentations.Add()
-    
-    # 边绘图边导出OLE
-    for i, chunk in enumerate(chunks):
-        # 1. 绘图
-        graph = op.new_graph(template=template_path) if template_path else op.new_graph()
+    for index, chunk in enumerate(chunks, start=1):
+        graph = op.new_graph(template=valid_template) if valid_template else op.new_graph()
         layer = graph[0]
         for y_idx in chunk:
             layer.add_plot(wks, coly=y_idx, colx=y_idx - 1, type='line')
         layer.rescale()
-        gname = f"{fname}_V{i+1}"
-        graph.name = gname
-        
-        # 2. 新建PPT页面
-        prs.Slides.Add(prs.Slides.Count + 1, 12)
-        
-        # 3. 激活图形并Ctrl+J复制，粘贴到PPT
-        copy_graph_to_ppt_ole(gname, prs, prs.Slides.Count, width_pt=width_pt, height_pt=height_pt)
-        print(f"已完成第{i+1}/{len(chunks)}张图表")
-    
-    # 保存
-    opju_path = os.path.join(folder, f"VDA曲线_{fname}.opju")
+        graph.name = f"{fname}_{graph_suffix}{index}"
+        created_graphs.append(graph.name)
+        print(f"已完成第{index}/{len(chunks)}张 Origin 图表")
+
+    opju_path = os.path.join(folder, f"{project_prefix}_{fname}.opju")
     save_origin_project(opju_path)
-    
-    try:
-        prs.SaveAs(os.path.abspath(ppt_path))
-        prs.Close()
-    except: pass
-    
-    return f"成功！已创建 {len(chunks)} 张图表\nPPT: {ppt_path}\nOrigin项目: {opju_path}"
+    return (
+        f"成功！已在 Origin 中创建 {len(created_graphs)} 张图表\n"
+        f"Origin 项目: {opju_path}"
+    )
+
+
+def plot_tensile_in_origin(
+    file_path,
+    template_path=None,
+    lines_per_graph=12,
+    swap_xy=True,
+):
+    """Plot tensile curves in Origin without any PPT copy/export path."""
+    dataframe = load_tensile_xy_dataframe(file_path, swap_xy=swap_xy)
+    return _plot_dataframe_in_origin(
+        dataframe,
+        file_path,
+        template_path,
+        lines_per_graph,
+        "T",
+        "拉伸曲线",
+    )
+
+
+def plot_vda_in_origin(
+    file_path,
+    template_path=None,
+    lines_per_graph=12,
+    swap_xy=True,
+):
+    """Plot VDA curves in Origin without any PPT copy/export path."""
+    dataframe = load_vda_xy_dataframe(file_path, swap_xy=swap_xy)
+    return _plot_dataframe_in_origin(
+        dataframe,
+        file_path,
+        template_path,
+        lines_per_graph,
+        "V",
+        "VDA曲线",
+    )
 
 
 def find_phase_columns_from_header(file_path):

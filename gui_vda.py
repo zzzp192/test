@@ -3,6 +3,7 @@ from tkinter import messagebox, filedialog
 import os
 import vda_processor
 import origin_processor
+import matplotlib_ppt
 import config_manager
 from gui_shared import (
     resource_path, browse_file, get_unique_path, COLORS,
@@ -41,15 +42,16 @@ class VDAFrame(tk.Frame):
         self._setup_dnd(data_section)
         self._setup_dnd(entry)
 
-        self.plot_frame = create_section(page, "绘图选项", "设置 Origin 模板、每图曲线数、XY 列与输出尺寸。")
+        self.plot_frame = create_section(
+            page,
+            "绘图选项",
+            "Origin 与一键 PPT 共用曲线分组和 XY 调换规则；一键 PPT 固定生成 12×16 cm（高×宽）透明图。",
+        )
         self._setup_dnd(self.plot_frame)
 
         self.o_template = tk.StringVar(value=config_manager.get_template('vda_template'))
         self.o_lines = tk.IntVar(value=12)
         self.o_swap_xy = tk.BooleanVar(value=True)
-        self.o_width = tk.DoubleVar(value=15.0)
-        self.o_height = tk.DoubleVar(value=12.0)
-        self.o_copy_to_ppt = tk.BooleanVar(value=False)  # 默认不复制到PPT
 
         create_field_label(self.plot_frame, "模板").grid(row=0, column=0, sticky='w')
         create_entry(self.plot_frame, self.o_template, width=28).grid(row=1, column=0, columnspan=2, sticky='ew', padx=(0, 10), pady=(6, 12), ipady=8)
@@ -58,24 +60,15 @@ class VDAFrame(tk.Frame):
         create_spinbox(self.plot_frame, 1, 50, self.o_lines, width=6).grid(row=1, column=3, sticky='w', padx=(18, 0), pady=(6, 12), ipady=5)
         create_checkbutton(self.plot_frame, "调换 XY 列", self.o_swap_xy).grid(row=1, column=4, sticky='w', padx=(18, 0), pady=(6, 12))
 
-        size_frame = tk.Frame(self.plot_frame, bg=COLORS['bg_medium'])
-        size_frame.grid(row=2, column=0, columnspan=5, sticky='w')
-        self._setup_dnd(size_frame)
-
-        create_field_label(size_frame, "图片宽(cm)").pack(side='left')
-        create_spinbox(size_frame, 5, 30, self.o_width, width=6, increment=0.5).pack(side='left', padx=(8, 18), ipady=4)
-        create_field_label(size_frame, "图片高(cm)").pack(side='left')
-        create_spinbox(size_frame, 5, 25, self.o_height, width=6, increment=0.5).pack(side='left', padx=(8, 18), ipady=4)
-        create_checkbutton(size_frame, "复制到 PPT", self.o_copy_to_ppt).pack(side='left', padx=(8, 0))
-
         self.plot_frame.columnconfigure(1, weight=1)
 
         btn_frame = tk.Frame(page, bg=COLORS['bg_dark'])
         btn_frame.pack(fill='x', pady=(2, 0))
         self._setup_dnd(btn_frame)
 
-        create_button(btn_frame, "仅提取数据", self.run_extract_only, "primary").pack(side='left', expand=True, fill='x', padx=(0, 6))
-        create_button(btn_frame, "仅绘图", self.run_plot_only, "cta").pack(side='left', expand=True, fill='x', padx=(6, 0))
+        create_button(btn_frame, "仅提取数据", self.run_extract_only, "primary").pack(side='left', expand=True, fill='x', padx=(0, 4))
+        create_button(btn_frame, "仅origin绘图", self.run_plot_only, "secondary").pack(side='left', expand=True, fill='x', padx=4)
+        create_button(btn_frame, "一键PPT（非origin出图）", self.run_one_click_ppt, "cta").pack(side='left', expand=True, fill='x', padx=(4, 0))
 
     def _setup_dnd(self, widget):
         """设置拖拽"""
@@ -134,27 +127,38 @@ class VDAFrame(tk.Frame):
         if not success:
             return messagebox.showerror("Origin连接失败", err)
 
-        copy_to_ppt = self.o_copy_to_ppt.get()
-        if copy_to_ppt:
-            messagebox.showwarning("注意", "绘图期间请勿操作键盘鼠标！\n点击确定开始绘图...")
-
         try:
-            msg = origin_processor.plot_vda_to_ppt(
+            msg = origin_processor.plot_vda_in_origin(
                 src,
                 self.o_template.get() or None,
                 self.o_lines.get(),
                 self.o_swap_xy.get(),
-                width_cm=self.o_width.get(),
-                height_cm=self.o_height.get(),
-                copy_to_ppt=copy_to_ppt
             )
             messagebox.showinfo("完成", msg)
-            # 如果复制到PPT，打开生成的PPT
-            if copy_to_ppt:
-                folder = os.path.dirname(src)
-                fname = os.path.splitext(os.path.basename(src))[0]
-                ppt_path = os.path.join(folder, f"VDA曲线_{fname}.pptx")
-                if os.path.exists(ppt_path):
-                    os.startfile(ppt_path)
+        except Exception as e:
+            messagebox.showerror("错误", str(e))
+
+    def run_one_click_ppt(self):
+        src = self.v_vda_src.get()
+        if not src:
+            return messagebox.showwarning("提示", "请先选择数据文件")
+
+        template = resource_path("VDA弯曲角模板.pptx")
+        if not os.path.exists(template):
+            return messagebox.showerror("错误", "未找到模板文件")
+
+        folder = os.path.dirname(src)
+        fname = os.path.splitext(os.path.basename(src))[0]
+        output = get_unique_path(os.path.join(folder, f"VDA报告_{fname}.pptx"))
+        try:
+            msg = matplotlib_ppt.create_vda_one_click_ppt(
+                src,
+                template,
+                output,
+                lines_per_graph=self.o_lines.get(),
+                swap_xy=self.o_swap_xy.get(),
+            )
+            messagebox.showinfo("完成", msg)
+            os.startfile(output)
         except Exception as e:
             messagebox.showerror("错误", str(e))

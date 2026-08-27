@@ -26,7 +26,7 @@ def main() -> None:
     draw.text((44 * SCALE, 82 * SCALE), "育材堂报告助手", font=font("msyhbd.ttc", 25), fill="#104F52")
     draw.text(
         (44 * SCALE, 126 * SCALE),
-        "材料试验报告处理与 Origin 绘图工具  V3.16",
+        "材料试验报告处理与 Origin / matplotlib 绘图工具  V4.0",
         font=font("msyh.ttc", 13),
         fill="#475569",
     )

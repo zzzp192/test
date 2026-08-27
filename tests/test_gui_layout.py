@@ -4,6 +4,7 @@ import tkinter as tk
 from gui_origin import OriginFrame
 from gui_shared import create_page
 from gui_tensile import TensileFrame
+from gui_vda import VDAFrame
 from main import MainApp, StartupSplash, __version__, get_bootloader_splash
 
 
@@ -14,6 +15,16 @@ def test_v316_spec_uses_pyinstaller_bootloader_splash():
     assert "assets/startup_splash.png" in spec_text
     assert "splash," in spec_text
     assert "splash.binaries," in spec_text
+
+
+def test_v40_spec_packages_matplotlib_for_one_click_ppt():
+    spec_text = open("育材堂报告助手V4.0.spec", encoding="utf-8").read()
+
+    assert "'matplotlib'" in spec_text
+    assert "'matplotlib.backends.backend_agg'" in spec_text
+    assert "name='育材堂报告助手V4.0'" in spec_text
+    excludes = spec_text.split("excludes=[", 1)[1].split("],", 1)[0]
+    assert "matplotlib" not in excludes
 
 
 def test_main_uses_a_loading_screen_before_enabling_drag_and_drop():
@@ -34,6 +45,19 @@ def _all_label_texts(widget):
         if isinstance(child, tk.Label):
             texts.append(child.cget("text"))
         texts.extend(_all_label_texts(child))
+    return texts
+
+
+def _all_widget_texts(widget):
+    texts = []
+    for child in widget.winfo_children():
+        try:
+            text = child.cget("text")
+        except tk.TclError:
+            text = ""
+        if text:
+            texts.append(text)
+        texts.extend(_all_widget_texts(child))
     return texts
 
 
@@ -76,6 +100,7 @@ def test_gui_layout_startup_and_removed_helper_text_are_configured():
         assert root.tk.getint(subtitles[0].cget("wraplength")) > 0
 
         tensile = TensileFrame(root)
+        vda = VDAFrame(root)
         origin = OriginFrame(root)
         root.update_idletasks()
 
@@ -90,5 +115,11 @@ def test_gui_layout_startup_and_removed_helper_text_are_configured():
         ]
         for text in removed_text:
             assert text not in all_text
+
+        report_module_text = _all_widget_texts(tensile) + _all_widget_texts(vda)
+        assert report_module_text.count("仅origin绘图") == 2
+        assert report_module_text.count("一键PPT（非origin出图）") == 2
+        assert "复制到 PPT" not in report_module_text
+        assert "仅绘图" not in report_module_text
     finally:
         root.destroy()
