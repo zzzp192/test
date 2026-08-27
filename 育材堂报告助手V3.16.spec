@@ -73,7 +73,7 @@ exe = EXE(
     a.datas,
     splash.binaries,
     [],
-    name='育材堂报告助手V3.15',
+    name='育材堂报告助手V3.16',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

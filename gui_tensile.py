@@ -21,11 +21,11 @@ class TensileFrame(tk.Frame):
             widget.destroy()
         self.configure(bg=COLORS['bg_dark'])
 
-        page = create_page(self)
+        page = create_page(self, scrollable=True)
         self.v_tensile_src = tk.StringVar()
         self.v_elongation_mode = tk.StringVar(value="ag")
 
-        data_section = create_section(page, "拉伸实验报告", "导入 Word 或 Excel 原始数据，生成报告或绘制 Origin 曲线。")
+        data_section = create_section(page, "拉伸实验报告")
         create_field_label(data_section, "原始数据文件").grid(row=0, column=0, columnspan=2, sticky='w')
         entry = create_entry(data_section, self.v_tensile_src, width=54, mono=True)
         entry.grid(row=1, column=0, padx=(0, 10), pady=(6, 0), sticky='ew', ipady=9)
@@ -42,10 +42,9 @@ class TensileFrame(tk.Frame):
         self._setup_dnd(data_section)
         self._setup_dnd(entry)
 
-        option_section = create_section(page, "报告字段", "选择报告中展示的延伸率组合。")
-        create_field_label(option_section, "延伸率字段").pack(anchor='w')
+        option_section = create_section(page, "报告字段")
         opt_frame = tk.Frame(option_section, bg=COLORS['bg_medium'])
-        opt_frame.pack(fill='x', pady=(6, 0))
+        opt_frame.pack(fill='x')
         for value, text in [
             ("a_only", "仅 A（断后伸长率）"),
             ("ag", "A + Ag（最大力延伸率）"),
@@ -54,7 +53,7 @@ class TensileFrame(tk.Frame):
             create_radiobutton(opt_frame, text, self.v_elongation_mode, value).pack(side="left", padx=(0, 18))
         self._setup_dnd(option_section)
 
-        self.plot_frame = create_section(page, "绘图选项", "设置 Origin 模板、每图曲线数、XY 列与输出尺寸。")
+        self.plot_frame = create_section(page, "绘图选项")
         self._setup_dnd(self.plot_frame)
 
         self.o_template = tk.StringVar(value=config_manager.get_template('tensile_template'))

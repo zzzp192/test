@@ -1,5 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+# The core application deliberately has no PyInstaller Splash.  The native
+# launcher owns the startup experience, avoiding the blank Tcl/Tk window that
+# PyInstaller's splash can display on some Windows installations.
 a = Analysis(
     ['main.py'],
     pathex=[],
@@ -23,57 +26,23 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        'torch',
-        'torchvision',
-        'tensorflow',
-        'scipy',
-        'numpy.core._dotblas',
-        'matplotlib',
-        'IPython',
-        'jupyter',
-        'notebook',
-        'pytest',
-        'sphinx',
-        'docutils',
-        'jedi',
-        'parso',
-        'pyarrow',
-        'numba',
-        'llvmlite',
-        'boto3',
-        'botocore',
-        's3fs',
-        'fsspec',
-        'tables',
-        'numexpr',
+        'torch', 'torchvision', 'tensorflow', 'scipy', 'numpy.core._dotblas',
+        'matplotlib', 'IPython', 'jupyter', 'notebook', 'pytest', 'sphinx',
+        'docutils', 'jedi', 'parso', 'pyarrow', 'numba', 'llvmlite', 'boto3',
+        'botocore', 's3fs', 'fsspec', 'tables', 'numexpr',
     ],
     noarchive=False,
     optimize=0,
 )
 pyz = PYZ(a.pure)
 
-splash = Splash(
-    'assets/startup_splash.png',
-    binaries=a.binaries,
-    datas=a.datas,
-    text_pos=(44, 260),
-    text_size=12,
-    text_font='Microsoft YaHei UI',
-    text_color='#475569',
-    text_default='正在解压程序组件...',
-    minify_script=True,
-    always_on_top=True,
-)
-
 exe = EXE(
     pyz,
-    splash,
     a.scripts,
     a.binaries,
     a.datas,
-    splash.binaries,
     [],
-    name='育材堂报告助手V3.15',
+    name='育材堂报告助手V3.16_core',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

@@ -43,7 +43,7 @@ class OriginFrame(tk.Frame):
             widget.destroy()
         self.configure(bg=COLORS['bg_dark'])
 
-        page = create_page(self)
+        page = create_page(self, scrollable=True)
         self.o_template_path = tk.StringVar(value=config_manager.get_template('phase_template'))
 
         files_section = create_section(page, "相变点绘图", "添加一个或多个 CSV 文件，批量生成相变点曲线。")
@@ -85,7 +85,7 @@ class OriginFrame(tk.Frame):
         create_button(btn_frame, "清空列表", self.clear_files, "secondary").pack(side='left')
         files_section.columnconfigure(0, weight=1)
 
-        option_section = create_section(page, "绘图选项", "设置 Origin 模板、图片尺寸和 PPT 输出方式。")
+        option_section = create_section(page, "绘图选项")
         create_field_label(option_section, "绘图模板").grid(row=0, column=0, sticky='w')
         create_entry(option_section, self.o_template_path, width=34).grid(row=1, column=0, sticky='ew', padx=(0, 10), pady=(6, 12), ipady=8)
         create_button(option_section, "选择", self.browse_template, "secondary").grid(row=1, column=1, sticky='ew', pady=(6, 12))

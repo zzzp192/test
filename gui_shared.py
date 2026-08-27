@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-育材堂报告助手 V3.15 - 共享UI组件模块
+育材堂报告助手 V3.16 - 共享UI组件模块
 
 软件名称：育材堂报告助手
-版本号：V3.15
+版本号：V3.16
 开发单位：育材堂
 开发者：张桢
 开发完成日期：2026年1月
@@ -40,7 +40,7 @@ from tkinterdnd2 import DND_FILES
 # ============================================================
 # 版本信息
 # ============================================================
-__version__ = "3.15"
+__version__ = "3.16"
 __author__ = "张桢"
 __copyright__ = "Copyright (c) 2026 育材堂"
 
@@ -140,7 +140,14 @@ def apply_hover(widget: tk.Widget, normal_bg: str, hover_bg: str) -> tk.Widget:
     return widget
 
 
-def create_page(parent: tk.Widget) -> tk.Frame:
+def create_page(parent: tk.Widget, scrollable: bool = False) -> tk.Frame:
+    if scrollable:
+        container = ScrollableFrame(parent, style_bg=COLORS['bg_dark'])
+        container.pack(fill="both", expand=True, padx=SPACING['page_x'], pady=SPACING['page_y'])
+        page = container.scrollable_frame
+        page._scrollable_page = container
+        return page
+
     page = tk.Frame(parent, bg=COLORS['bg_dark'])
     page.pack(fill="both", expand=True, padx=SPACING['page_x'], pady=SPACING['page_y'])
     return page

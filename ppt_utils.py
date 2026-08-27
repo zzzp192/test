@@ -25,6 +25,7 @@ from pptx.util import Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.oxml.ns import qn
+from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 
 # 主题颜色常量
 THEME_COLOR = RGBColor(25, 137, 141)
@@ -130,27 +131,62 @@ def insert_table_row(table, target_idx, source_idx):
     return table.rows[target_idx]
 
 def duplicate_slide(prs, index):
-    """复制幻灯片 - 简化版本"""
+    """复制幻灯片，并同步形状引用的图片、标签等内部关系。"""
     source_slide = prs.slides[index]
     
-    # 获取源幻灯片的布局
-    try:
-        slide_layout = source_slide.slide_layout
-    except:
-        slide_layout = prs.slide_layouts[0]
-    
-    # 添加新幻灯片
-    new_slide = prs.slides.add_slide(slide_layout)
+    # 某些模板的当前版式包含标题占位符，python-pptx 直接复用后会让
+    # 复制形状的坐标系异常。使用模板的基础版式并显式复制背景更稳定。
+    new_slide = prs.slides.add_slide(prs.slide_layouts[0])
+    new_slide.element.set('showMasterSp', '0')
     
     # 清除新幻灯片的默认占位符
     spTree = new_slide.shapes._spTree
     for sp in list(spTree)[2:]:
         spTree.remove(sp)
+    source_spTree = source_slide.shapes._spTree
+    spTree.replace(spTree[0], copy.deepcopy(source_spTree[0]))
+    spTree.replace(spTree[1], copy.deepcopy(source_spTree[1]))
+
+    source_background = source_slide.element.cSld.bg
+    if source_background is None:
+        source_background = source_slide.slide_layout.element.cSld.bg
+    if source_background is not None:
+        current_background = new_slide.element.cSld.bg
+        if current_background is not None:
+            new_slide.element.cSld.remove(current_background)
+        new_slide.element.cSld.insert(0, copy.deepcopy(source_background))
+
+    # 新页已经拥有自己的 slideLayout 关系；其余关系必须复制并重新分配 rId。
+    # 模板表格包含 p:tags，若只复制形状，旧 rId 会误指向新页的 slideLayout，
+    # 导致第二页错位，Microsoft PowerPoint 甚至会拒绝打开整个文件。
+    relationship_map = {}
+    for relationship in source_slide.part.rels.values():
+        if relationship.reltype in (RT.SLIDE_LAYOUT, RT.NOTES_SLIDE, RT.TAGS):
+            continue
+        if relationship.is_external:
+            new_rid = new_slide.part.rels.get_or_add_ext_rel(
+                relationship.reltype,
+                relationship.target_ref,
+            )
+        else:
+            new_rid = new_slide.part.rels.get_or_add(
+                relationship.reltype,
+                relationship.target_part,
+            )
+        relationship_map[relationship.rId] = new_rid
     
     # 复制源幻灯片的形状
     for shape in source_slide.shapes:
         new_el = copy.deepcopy(shape.element)
-        spTree.append(new_el)
+        # Office 的表格标签属于当前幻灯片的私有元数据，不能让多个页面
+        # 共享同一个 tags part；复制时移除，不影响表格内容与格式。
+        for custom_data in list(new_el.iter(qn('p:custDataLst'))):
+            custom_data.getparent().remove(custom_data)
+        for element in new_el.iter():
+            for attribute_name, attribute_value in list(element.attrib.items()):
+                if attribute_value in relationship_map:
+                    element.set(attribute_name, relationship_map[attribute_value])
+        spTree.insert_element_before(new_el, 'p:extLst')
     
     return new_slide
 

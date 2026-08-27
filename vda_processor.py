@@ -37,6 +37,64 @@ from ppt_utils import (
 
 REPORT_TITLE_COLOR = RGBColor(15, 78, 82)
 
+
+def load_vda_summary(excel_path):
+    """读取 VDA 汇总表；Excel 文件绝不按 CSV 尝试解析。"""
+    extension = os.path.splitext(excel_path)[1].lower()
+
+    if extension == '.csv':
+        read_errors = []
+        for encoding in ('utf-8-sig', 'utf-8', 'gb18030', 'gbk'):
+            try:
+                return pd.read_csv(excel_path, encoding=encoding)
+            except Exception as exc:
+                read_errors.append(str(exc))
+        raise ValueError(f"读取 CSV 失败: {'; '.join(read_errors)}")
+
+    xls = pd.ExcelFile(excel_path)
+    try:
+        preferred_sheets = [
+            sheet for sheet in xls.sheet_names
+            if sheet.strip() == '2. VDA弯曲'
+        ]
+        preferred_sheets.extend(
+            sheet for sheet in xls.sheet_names
+            if sheet not in preferred_sheets and 'VDA' in sheet and '原始数据' not in sheet
+        )
+        preferred_sheets.extend(sheet for sheet in xls.sheet_names if sheet not in preferred_sheets)
+
+        required_headers = ('试样编号', '公称厚度', '最大力', '压头位移', '角度')
+        for sheet in preferred_sheets:
+            df = pd.read_excel(xls, sheet_name=sheet)
+            headers = [str(column).replace('\n', '').replace(' ', '') for column in df.columns]
+            if all(any(token in header for header in headers) for token in required_headers):
+                return df
+    finally:
+        xls.close()
+
+    raise ValueError('未找到包含试样编号、公称厚度、最大力、压头位移和角度的 VDA 汇总表。')
+
+
+def standardize_vda_columns(df):
+    """统一 VDA 汇总表列名；厚度始终采用公称厚度 t0。"""
+    col_map = {
+        "试样编号": "SampleID",
+        "公称厚度t0": "Thickness",
+        "最大力Fm": "MaxForce",
+        "压头位移S": "Displacement",
+        "角度": "Angle"
+    }
+
+    standardized = df.copy()
+    for source_name, standard_name in col_map.items():
+        for column in standardized.columns:
+            normalized_name = str(column).replace('\n', '').replace(' ', '')
+            if source_name in normalized_name:
+                standardized.rename(columns={column: standard_name}, inplace=True)
+                break
+
+    return standardized
+
 def process_vda_report(excel_path, ppt_template, output_path, force_unit='kN', include_disp=True):
     """
     处理VDA弯曲数据并生成PPT报告
@@ -46,39 +104,12 @@ def process_vda_report(excel_path, ppt_template, output_path, force_unit='kN', i
     
     # 1. 读取数据
     try:
-        try:
-            df = pd.read_csv(excel_path, encoding='utf-8')
-        except:
-            try:
-                df = pd.read_csv(excel_path, encoding='gbk')
-            except:
-                df = pd.read_csv(excel_path, encoding='gb18030')
-    except:
-        try:
-            df = pd.read_excel(excel_path, sheet_name="2. VDA弯曲")
-        except:
-            try:
-                df = pd.read_excel(excel_path)
-            except Exception as e:
-                return f"读取Excel/CSV失败: {str(e)}"
+        df = load_vda_summary(excel_path)
+    except Exception as e:
+        return f"读取Excel/CSV失败: {str(e)}"
 
     # 2. 列名映射
-    col_map = {
-        "试样编号": "SampleID",
-        "公称厚度t0": "Thickness",
-        "最大力Fm": "MaxForce",
-        "压头位移S": "Displacement",
-        "角度": "Angle"
-    }
-    
-    for col, std_name in col_map.items():
-        if col in df.columns:
-            df.rename(columns={col: std_name}, inplace=True)
-        else:
-            for c in df.columns:
-                if col in c:
-                    df.rename(columns={c: std_name}, inplace=True)
-                    break
+    df = standardize_vda_columns(df)
     
     if 'SampleID' in df.columns:
         df = df.dropna(subset=['SampleID'])
@@ -128,9 +159,10 @@ def process_vda_report(excel_path, ppt_template, output_path, force_unit='kN', i
         replace_text_in_slide(slide, "项目号", project_id)
         colorize_project_title(slide, project_id)
         
-        tables = [s.table for s in slide.shapes if s.has_table]
-        if not tables: continue
-        main_table = tables[0]
+        table_shapes = [s for s in slide.shapes if s.has_table]
+        if not table_shapes: continue
+        main_table_shape = table_shapes[0]
+        main_table = main_table_shape.table
 
         # 根据选项删除“压头位移”列
         if not include_disp:
@@ -139,6 +171,9 @@ def process_vda_report(excel_path, ppt_template, output_path, force_unit='kN', i
         
         # 填充数据
         process_table_chunk(main_table, chunk_groups, df, force_unit, include_disp)
+        # 直接删除/新增 XML 行后，python-pptx 不会同步图形框高度。
+        # 高度不一致会让 PowerPoint 把后续组显示到前一组的合并单元格中。
+        main_table_shape.height = sum(row.height for row in main_table.rows)
 
     # 6. 保存
     try:
@@ -198,12 +233,20 @@ def process_table_chunk(table, groups, full_df, unit, include_disp):
             except: pass
 
 def fill_group_data(table, data, group_name, start_row, n_rows, unit, include_disp):
-    if n_rows > 1:
-        try:
-            cell_top = table.cell(start_row, 0)
-            cell_bottom = table.cell(start_row + n_rows - 1, 0)
-            cell_top.merge(cell_bottom)
-        except: pass
+    # 模板默认每组 3 个试样加 1 行统计，第一列预先纵向合并 4 行。
+    # 当实际试样数不是 3 时，删行不会自动更新 rowSpan，旧跨度会侵入下一组。
+    # 先清理旧合并属性，再按“数据行 + 统计行”精确重建该组的合并区域。
+    group_end_row = start_row + n_rows
+    try:
+        for row_idx in range(start_row, group_end_row + 1):
+            cell_xml = table.cell(row_idx, 0)._tc
+            cell_xml.attrib.pop('rowSpan', None)
+            cell_xml.attrib.pop('vMerge', None)
+
+        if group_end_row > start_row:
+            table.cell(start_row, 0).merge(table.cell(group_end_row, 0))
+    except Exception:
+        pass
     
     cell_name = table.cell(start_row, 0)
     cell_name.text = str(group_name)

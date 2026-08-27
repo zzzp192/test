@@ -1,5 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+# Green/portable build: dependencies stay beside the executable, so Windows
+# does not need to unpack the 68 MB application archive into a temporary
+# directory every time the user starts the program.
 a = Analysis(
     ['main.py'],
     pathex=[],
@@ -23,57 +26,22 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        'torch',
-        'torchvision',
-        'tensorflow',
-        'scipy',
-        'numpy.core._dotblas',
-        'matplotlib',
-        'IPython',
-        'jupyter',
-        'notebook',
-        'pytest',
-        'sphinx',
-        'docutils',
-        'jedi',
-        'parso',
-        'pyarrow',
-        'numba',
-        'llvmlite',
-        'boto3',
-        'botocore',
-        's3fs',
-        'fsspec',
-        'tables',
-        'numexpr',
+        'torch', 'torchvision', 'tensorflow', 'scipy', 'numpy.core._dotblas',
+        'matplotlib', 'IPython', 'jupyter', 'notebook', 'pytest', 'sphinx',
+        'docutils', 'jedi', 'parso', 'pyarrow', 'numba', 'llvmlite', 'boto3',
+        'botocore', 's3fs', 'fsspec', 'tables', 'numexpr',
     ],
     noarchive=False,
     optimize=0,
 )
 pyz = PYZ(a.pure)
 
-splash = Splash(
-    'assets/startup_splash.png',
-    binaries=a.binaries,
-    datas=a.datas,
-    text_pos=(44, 260),
-    text_size=12,
-    text_font='Microsoft YaHei UI',
-    text_color='#475569',
-    text_default='正在解压程序组件...',
-    minify_script=True,
-    always_on_top=True,
-)
-
 exe = EXE(
     pyz,
-    splash,
     a.scripts,
-    a.binaries,
-    a.datas,
-    splash.binaries,
     [],
-    name='育材堂报告助手V3.15',
+    exclude_binaries=True,
+    name='育材堂报告助手V3.16',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -87,4 +55,14 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='育材堂报告助手V3.16绿色版',
 )
