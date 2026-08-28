@@ -46,7 +46,7 @@ class VdaSummaryExtractionTests(unittest.TestCase):
         source = pd.DataFrame({
             '试样编号': sample_ids,
             '实测厚度t': [None] * len(sample_ids),
-            '最大力Fm': [5.0 + idx / 10 for idx in range(len(sample_ids))],
+            '最大力Fm': [5000.0 + idx * 100 for idx in range(len(sample_ids))],
             '公称厚度t0': [1.6] * len(sample_ids),
             '压头位移S': [3.0 + idx / 10 for idx in range(len(sample_ids))],
             '角度': [30.0 + idx for idx in range(len(sample_ids))],
@@ -81,6 +81,9 @@ class VdaSummaryExtractionTests(unittest.TestCase):
                 self.assertEqual(table.cell(row, 0)._tc.get('rowSpan'), '3')
                 self.assertEqual(table.cell(row + 1, 0)._tc.get('vMerge'), '1')
                 self.assertEqual(table.cell(row + 2, 0)._tc.get('vMerge'), '1')
+
+            expected_first_force_kn = 5.0 + slide_index * 0.8
+            self.assertEqual(table.cell(starts[0], 3).text, f'{expected_first_force_kn:.1f}')
 
             tags = table_shape.element.find('.//' + qn('p:tags'))
             if slide_index == 0:

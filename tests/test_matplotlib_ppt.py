@@ -13,10 +13,13 @@ from curve_data import (
     load_tensile_xy_dataframe,
     load_vda_xy_dataframe,
     prepare_xy_dataframe,
+    trim_tensile_tail_drop_points,
 )
 from matplotlib_ppt import (
     _axis_labels,
+    _build_group_styles,
     _curve_group_label,
+    _set_zero_origin,
     create_tensile_one_click_ppt,
     create_transparent_curve_images,
     create_vda_one_click_ppt,
@@ -25,6 +28,22 @@ from matplotlib_ppt import (
 
 
 class CurveDataTests(unittest.TestCase):
+    def test_tensile_tail_drop_only_trims_from_drop_inside_last_fifteen_points(self):
+        source = pd.DataFrame({
+            "应力_1": [1500] * 10 + [1420, 1410, 1397.828747, 1394.657754, 1389.735655, 79.73718774, 0.106139352],
+            "应变_1": list(range(10)) + [2.0, 2.1, 2.2776, 2.3806, 2.4504, 2.5576, 2.63],
+            # This drop is outside the final-fifteen-point window and must remain untouched.
+            "应力_2": [1000, 500] + [500] * 15,
+            "应变_2": list(range(1, 18)),
+        })
+
+        trimmed = trim_tensile_tail_drop_points(source)
+
+        self.assertEqual(trimmed.iloc[:, :2].dropna().shape[0], 15)
+        self.assertEqual(trimmed.iloc[:, 0].dropna().iloc[-1], 1389.735655)
+        self.assertEqual(trimmed.iloc[:, 1].dropna().iloc[-1], 2.4504)
+        self.assertEqual(trimmed.iloc[:, 2:].dropna().shape[0], 17)
+
     def test_pair_swap_and_labels_match_origin_xyxy_rule(self):
         source = pd.DataFrame({
             "应力_1": [100, 200],
@@ -60,8 +79,8 @@ class CurveDataTests(unittest.TestCase):
                     writer, sheet_name="2. VDA弯曲", index=False
                 )
                 pd.DataFrame({
-                    "力_1": [1, 2], "位移_1": [0.1, 0.2],
-                    "力_2": [2, 3], "位移_2": [0.2, 0.3],
+                    "力_1": [1000, 2000], "位移_1": [0.1, 0.2],
+                    "力_2": [2000, 3000], "位移_2": [0.2, 0.3],
                 }).to_excel(writer, sheet_name="原始数据", index=False)
 
             tensile = load_tensile_xy_dataframe(tensile_path, swap_xy=True)
@@ -69,6 +88,8 @@ class CurveDataTests(unittest.TestCase):
 
         self.assertEqual(list(tensile.columns), ["应变_1", "T-1", "应变_2", "T-2"])
         self.assertEqual(list(vda.columns), ["位移_1", "V-1", "位移_2", "V-2"])
+        self.assertEqual(vda["V-1"].tolist(), [1.0, 2.0])
+        self.assertEqual(vda["V-2"].tolist(), [2.0, 3.0])
 
 
 class MatplotlibPptTests(unittest.TestCase):
@@ -77,9 +98,32 @@ class MatplotlibPptTests(unittest.TestCase):
             _axis_labels("tensile", True),
             ("Engineering strain/%", "Engineering stress/MPa"),
         )
-        self.assertEqual(_axis_labels("vda", True), ("Displacement/mm", "Force/kN"))
+        self.assertEqual(_axis_labels("vda", True), ("Displacement/mm", "Load/KN"))
         self.assertEqual(_curve_group_label("尾-1.4-边1-H-3"), "尾-1.4-边1-H")
+        self.assertEqual(_curve_group_label("VDA-30m-A"), "VDA-30m")
         self.assertEqual(_curve_group_label("Sample A"), "Sample A")
+
+        sample_labels = [f"Group-{group}-{sample}" for group in "ABCD" for sample in range(1, 4)]
+        group_styles = _build_group_styles(sample_labels)
+        self.assertEqual(list(group_styles), ["Group-A", "Group-B", "Group-C", "Group-D"])
+        self.assertEqual(len(set(group_styles.values())), 4)
+        self.assertEqual({line_style for _, line_style in group_styles.values()}, {"-"})
+
+    def test_both_axes_start_at_zero(self):
+        import matplotlib
+
+        matplotlib.use("Agg")
+        from matplotlib import pyplot as plt
+
+        figure, axes = plt.subplots()
+        axes.plot([2, 3], [5, 8])
+        _set_zero_origin(axes)
+
+        self.assertEqual(axes.get_xlim()[0], 0)
+        self.assertEqual(axes.get_ylim()[0], 0)
+        self.assertGreater(axes.get_xlim()[1], 3)
+        self.assertGreater(axes.get_ylim()[1], 8)
+        plt.close(figure)
 
     def test_png_is_transparent_and_fixed_16_by_12_cm(self):
         dataframe = pd.DataFrame({
@@ -122,7 +166,7 @@ class MatplotlibPptTests(unittest.TestCase):
         self.assertEqual(inserted, 1)
         self.assertEqual(picture.width, Cm(16))
         self.assertEqual(picture.height, Cm(12))
-        self.assertEqual(picture.left, result.slide_width - Cm(16))
+        self.assertEqual(picture.left, result.slide_width - Cm(16) - Cm(1.5))
         self.assertEqual(picture.top, (result.slide_height - Cm(12)) // 2)
 
     def test_tensile_one_click_generates_report_with_right_side_plot(self):
@@ -213,7 +257,7 @@ class MatplotlibPptTests(unittest.TestCase):
         self.assertIn("成功生成一键 PPT", message)
         self.assertEqual(len(result.slides), 1)
         self.assertEqual(len(pictures), 1)
-        self.assertEqual(pictures[0].left, result.slide_width - Cm(16))
+        self.assertEqual(pictures[0].left, result.slide_width - Cm(16) - Cm(1.5))
 
 
 if __name__ == "__main__":

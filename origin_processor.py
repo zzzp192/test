@@ -650,9 +650,14 @@ def plot_tensile_in_origin(
     template_path=None,
     lines_per_graph=12,
     swap_xy=True,
+    trim_tail_drop=True,
 ):
     """Plot tensile curves in Origin without any PPT copy/export path."""
-    dataframe = load_tensile_xy_dataframe(file_path, swap_xy=swap_xy)
+    dataframe = load_tensile_xy_dataframe(
+        file_path,
+        swap_xy=swap_xy,
+        trim_tail_drop=trim_tail_drop,
+    )
     return _plot_dataframe_in_origin(
         dataframe,
         file_path,

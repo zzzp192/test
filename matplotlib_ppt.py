@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import os
-import re
 import tempfile
 from pathlib import Path
 
@@ -23,6 +22,10 @@ from curve_data import (
 PLOT_WIDTH_CM = 16.0
 PLOT_HEIGHT_CM = 12.0
 PLOT_DPI = 300
+X_AXIS_MARGIN_RATIO = 0.05
+Y_AXIS_MARGIN_RATIO = 0.03
+GROUP_COLOR_CYCLE = ("#000000", "#ff0000", "#00b800", "#0000ff", "#d000d0", "#00a0a0", "#ff8800", "#7030a0")
+GROUP_LINE_STYLE = "-"
 
 
 def _axis_labels(data_type: str, swap_xy: bool) -> tuple[str, str]:
@@ -30,7 +33,7 @@ def _axis_labels(data_type: str, swap_xy: bool) -> tuple[str, str]:
         labels = ("Engineering strain/%", "Engineering stress/MPa")
         return labels if swap_xy else labels[::-1]
     if data_type == "vda":
-        labels = ("Displacement/mm", "Force/kN")
+        labels = ("Displacement/mm", "Load/KN")
         return labels if swap_xy else labels[::-1]
     return "X", "Y"
 
@@ -38,8 +41,34 @@ def _axis_labels(data_type: str, swap_xy: bool) -> tuple[str, str]:
 def _curve_group_label(sample_label: str) -> str:
     """Collapse sample suffixes such as Group-1/2/3 into one legend label."""
     label = str(sample_label).strip()
-    match = re.match(r"^(.*)-\d+$", label)
-    return match.group(1) if match else label
+    if "-" not in label:
+        return label
+    group_label, sample_suffix = label.rsplit("-", 1)
+    return group_label if group_label and sample_suffix else label
+
+
+def _build_group_styles(sample_labels) -> dict[str, tuple[str, str]]:
+    """Assign one color per group and use solid lines throughout."""
+    group_styles: dict[str, tuple[str, str]] = {}
+    for sample_label in sample_labels:
+        group_label = _curve_group_label(sample_label)
+        if group_label in group_styles:
+            continue
+        style_index = len(group_styles)
+        group_styles[group_label] = (
+            GROUP_COLOR_CYCLE[style_index % len(GROUP_COLOR_CYCLE)],
+            GROUP_LINE_STYLE,
+        )
+    return group_styles
+
+
+def _set_zero_origin(axes) -> None:
+    """Start at zero and retain padded automatic upper bounds."""
+    axes.margins(x=X_AXIS_MARGIN_RATIO, y=Y_AXIS_MARGIN_RATIO)
+    x_upper = axes.get_xlim()[1]
+    y_upper = axes.get_ylim()[1]
+    axes.set_xlim(left=0, right=x_upper)
+    axes.set_ylim(bottom=0, top=y_upper)
 
 
 def create_transparent_curve_images(
@@ -72,47 +101,46 @@ def create_transparent_curve_images(
         figure.patch.set_alpha(0)
         axes.patch.set_alpha(0)
 
-        color_cycle = ["#000000", "#ff0000", "#00d000", "#0000ff", "#d000d0", "#00a0a0", "#ff8800", "#7030a0"]
-        group_colors: dict[str, str] = {}
+        group_styles = _build_group_styles(curve.label for curve in curve_group)
         legend_groups: set[str] = set()
         for curve in curve_group:
             group_label = _curve_group_label(curve.label)
-            if group_label not in group_colors:
-                group_colors[group_label] = color_cycle[len(group_colors) % len(color_cycle)]
+            color, line_style = group_styles[group_label]
             legend_label = group_label if group_label not in legend_groups else "_nolegend_"
             legend_groups.add(group_label)
             axes.plot(
                 curve.x,
                 curve.y,
-                color=group_colors[group_label],
-                linewidth=1.0,
+                color=color,
+                linestyle=line_style,
+                linewidth=1.4,
                 label=legend_label,
             )
 
-        axes.set_xlabel(x_label, fontfamily="Times New Roman", fontsize=11)
-        axes.set_ylabel(y_label, fontfamily="Times New Roman", fontsize=11)
-        axes.margins(x=0.0, y=0.03)
+        axes.set_xlabel(x_label, fontfamily="Times New Roman", fontsize=15)
+        axes.set_ylabel(y_label, fontfamily="Times New Roman", fontsize=15)
+        _set_zero_origin(axes)
         axes.minorticks_on()
-        axes.tick_params(axis="both", which="major", direction="in", length=6, width=1.0, labelsize=9)
-        axes.tick_params(axis="both", which="minor", direction="in", length=3, width=0.8)
+        axes.tick_params(axis="both", which="major", direction="in", length=7, width=1.2, labelsize=12)
+        axes.tick_params(axis="both", which="minor", direction="in", length=3.5, width=0.9)
         for tick_label in [*axes.get_xticklabels(), *axes.get_yticklabels()]:
             tick_label.set_fontfamily("Times New Roman")
         for spine in axes.spines.values():
             spine.set_color("#000000")
-            spine.set_linewidth(1.15)
+            spine.set_linewidth(1.4)
 
         if legend_groups:
             legend = axes.legend(
                 loc="lower left",
                 bbox_to_anchor=(0.14, 0.18),
-                fontsize=7.5,
+                fontsize=11,
                 frameon=False,
-                handlelength=3.0,
-                handletextpad=0.4,
+                handlelength=3.5,
+                handletextpad=0.55,
             )
             for text in legend.get_texts():
                 text.set_fontfamily("Microsoft YaHei")
-        figure.subplots_adjust(left=0.14, right=0.985, bottom=0.16, top=0.965)
+        figure.subplots_adjust(left=0.14, right=0.96, bottom=0.16, top=0.965)
 
         image_path = output / f"curve_{group_index:03d}.png"
         figure.savefig(
@@ -134,7 +162,7 @@ def insert_curve_images(
     width_cm: float = PLOT_WIDTH_CM,
     height_cm: float = PLOT_HEIGHT_CM,
 ) -> int:
-    """Place one fixed-size plot on the right side of each report slide."""
+    """Place one fixed-size plot 1.5 cm left of the slide's right edge."""
     presentation = Presentation(ppt_path)
     if len(image_paths) > len(presentation.slides):
         raise ValueError(
@@ -144,7 +172,7 @@ def insert_curve_images(
 
     width = Cm(width_cm)
     height = Cm(height_cm)
-    left = max(0, presentation.slide_width - width)
+    left = max(0, presentation.slide_width - width - Cm(1.5))
     top = max(0, (presentation.slide_height - height) // 2)
 
     for slide_index, image_path in enumerate(image_paths):
@@ -169,9 +197,16 @@ def _create_one_click_ppt(
     swap_xy: bool,
     data_type: str,
     report_generator,
+    trim_tensile_tail_drop: bool = True,
 ) -> str:
-    loader = load_tensile_xy_dataframe if data_type == "tensile" else load_vda_xy_dataframe
-    dataframe = loader(data_path, swap_xy=swap_xy)
+    if data_type == "tensile":
+        dataframe = load_tensile_xy_dataframe(
+            data_path,
+            swap_xy=swap_xy,
+            trim_tail_drop=trim_tensile_tail_drop,
+        )
+    else:
+        dataframe = load_vda_xy_dataframe(data_path, swap_xy=swap_xy)
 
     output_folder = os.path.dirname(os.path.abspath(output_path))
     with tempfile.TemporaryDirectory(prefix="yucaitang_plot_", dir=output_folder) as temp_dir:
@@ -201,6 +236,7 @@ def create_tensile_one_click_ppt(
     lines_per_graph: int = 12,
     swap_xy: bool = True,
     elongation_mode: str = "ag",
+    trim_tail_drop: bool = True,
 ) -> str:
     import tensile_processor
 
@@ -217,6 +253,7 @@ def create_tensile_one_click_ppt(
             target,
             elongation_mode=elongation_mode,
         ),
+        trim_tensile_tail_drop=trim_tail_drop,
     )
 
 

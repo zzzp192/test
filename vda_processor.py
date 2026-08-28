@@ -120,6 +120,10 @@ def process_vda_report(excel_path, ppt_template, output_path, force_unit='kN', i
     if missing:
         return f"错误: Excel中找不到这些列: {missing}，请检查表头。"
 
+    # 原始最大力以 N 记录；报告模板使用 kN，数据行和统计值必须整体换算。
+    if str(force_unit).lower() == 'kn':
+        df['MaxForce'] = pd.to_numeric(df['MaxForce'], errors='coerce') / 1000.0
+
     # 3. 分组逻辑
     project_id = os.path.splitext(os.path.basename(excel_path))[0]
     

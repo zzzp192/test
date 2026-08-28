@@ -117,9 +117,17 @@ def test_gui_layout_startup_and_removed_helper_text_are_configured():
             assert text not in all_text
 
         report_module_text = _all_widget_texts(tensile) + _all_widget_texts(vda)
-        assert report_module_text.count("仅origin绘图") == 2
-        assert report_module_text.count("一键PPT（非origin出图）") == 2
+        assert report_module_text.count("Origin出图") == 2
+        assert report_module_text.count("一键PPT（Matplotlib出图）") == 2
+        assert "删除尾部突降点" in report_module_text
+        assert tensile.o_trim_tail_drop.get() is True
         assert "复制到 PPT" not in report_module_text
         assert "仅绘图" not in report_module_text
+
+        root.geometry("900x750")
+        root.update_idletasks()
+        tensile_page = app.tab_tensile.plot_frame.master.master.master
+        scrollable_page = tensile_page._scrollable_page
+        assert tensile_page.winfo_reqheight() <= scrollable_page.canvas.winfo_height()
     finally:
         root.destroy()

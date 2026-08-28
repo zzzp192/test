@@ -67,8 +67,8 @@ class VDAFrame(tk.Frame):
         self._setup_dnd(btn_frame)
 
         create_button(btn_frame, "仅提取数据", self.run_extract_only, "primary").pack(side='left', expand=True, fill='x', padx=(0, 4))
-        create_button(btn_frame, "仅origin绘图", self.run_plot_only, "secondary").pack(side='left', expand=True, fill='x', padx=4)
-        create_button(btn_frame, "一键PPT（非origin出图）", self.run_one_click_ppt, "cta").pack(side='left', expand=True, fill='x', padx=(4, 0))
+        create_button(btn_frame, "Origin出图", self.run_plot_only, "secondary").pack(side='left', expand=True, fill='x', padx=4)
+        create_button(btn_frame, "一键PPT（Matplotlib出图）", self.run_one_click_ppt, "cta").pack(side='left', expand=True, fill='x', padx=(4, 0))
 
     def _setup_dnd(self, widget):
         """设置拖拽"""

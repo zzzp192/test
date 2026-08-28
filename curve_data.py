@@ -12,6 +12,10 @@ from typing import Iterable
 import pandas as pd
 
 
+TENSILE_TAIL_POINT_COUNT = 15
+TENSILE_TAIL_DROP_THRESHOLD = 0.10
+
+
 @dataclass(frozen=True)
 class CurveSeries:
     """One numeric XY curve ready for plotting."""
@@ -207,7 +211,53 @@ def chunk_curves(curves: Iterable[CurveSeries], lines_per_graph: int) -> list[li
     return [curves[idx : idx + lines_per_graph] for idx in range(0, len(curves), lines_per_graph)]
 
 
-def load_tensile_xy_dataframe(file_path: str, swap_xy: bool = True) -> pd.DataFrame:
+def trim_tensile_tail_drop_points(
+    source_df: pd.DataFrame,
+    tail_point_count: int = TENSILE_TAIL_POINT_COUNT,
+    drop_threshold: float = TENSILE_TAIL_DROP_THRESHOLD,
+) -> pd.DataFrame:
+    """Remove a tensile curve from the first >10% drop within its last fifteen points."""
+    result = source_df.copy()
+    if tail_point_count < 2:
+        return result
+
+    for stress_column_index in range(0, len(result.columns) - 1, 2):
+        strain_column_index = stress_column_index + 1
+        numeric_pair = result.iloc[:, [stress_column_index, strain_column_index]].apply(
+            pd.to_numeric,
+            errors="coerce",
+        )
+        valid_pair = numeric_pair.dropna()
+        tail_pair = valid_pair.tail(tail_point_count)
+        if len(tail_pair) < 2:
+            continue
+
+        cutoff_row_position = None
+        stress_values = tail_pair.iloc[:, 0].tolist()
+        for point_index in range(1, len(stress_values)):
+            previous_stress = stress_values[point_index - 1]
+            current_stress = stress_values[point_index]
+            if previous_stress > 0 and current_stress < previous_stress * (1.0 - drop_threshold):
+                cutoff_index = tail_pair.index[point_index]
+                cutoff_row_position = result.index.get_loc(cutoff_index)
+                break
+
+        if cutoff_row_position is None:
+            continue
+
+        for column_index in (stress_column_index, strain_column_index):
+            numeric_column = pd.to_numeric(result.iloc[:, column_index], errors="coerce").astype(float)
+            numeric_column.iloc[cutoff_row_position:] = float("nan")
+            result.isetitem(column_index, numeric_column)
+
+    return result
+
+
+def load_tensile_xy_dataframe(
+    file_path: str,
+    swap_xy: bool = True,
+    trim_tail_drop: bool = True,
+) -> pd.DataFrame:
     if os.path.splitext(file_path)[1].lower() not in (".xlsx", ".xls"):
         raise ValueError("一键 PPT 的拉伸曲线绘图需要 Excel 原始数据（.xlsx/.xls）")
     sample_ids = get_tensile_sample_ids(file_path)
@@ -217,6 +267,8 @@ def load_tensile_xy_dataframe(file_path: str, swap_xy: bool = True) -> pd.DataFr
         source_df = pd.read_excel(xls, sheet_name=sheet)
     finally:
         xls.close()
+    if trim_tail_drop:
+        source_df = trim_tensile_tail_drop_points(source_df)
     return prepare_xy_dataframe(source_df, sample_ids, swap_xy)
 
 
@@ -228,4 +280,11 @@ def load_vda_xy_dataframe(file_path: str, swap_xy: bool = True) -> pd.DataFrame:
         source_df = pd.read_excel(xls, sheet_name=sheet)
     finally:
         xls.close()
+    # VDA source force columns are recorded in N. Convert every force column
+    # in the paired force/displacement data to kN before applying the XY swap.
+    for force_column_index in range(0, len(source_df.columns), 2):
+        force_values_kn = (
+            pd.to_numeric(source_df.iloc[:, force_column_index], errors="coerce") / 1000.0
+        )
+        source_df.isetitem(force_column_index, force_values_kn)
     return prepare_xy_dataframe(source_df, sample_ids, swap_xy)

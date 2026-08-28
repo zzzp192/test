@@ -64,13 +64,17 @@ class TensileFrame(tk.Frame):
         self.o_template = tk.StringVar(value=config_manager.get_template('tensile_template'))
         self.o_lines = tk.IntVar(value=12)
         self.o_swap_xy = tk.BooleanVar(value=True)
+        self.o_trim_tail_drop = tk.BooleanVar(value=True)
 
         create_field_label(self.plot_frame, "模板").grid(row=0, column=0, sticky='w')
         create_entry(self.plot_frame, self.o_template, width=28).grid(row=1, column=0, columnspan=2, sticky='ew', padx=(0, 10), pady=(6, 12), ipady=8)
         create_button(self.plot_frame, "选择", self.browse_template, "secondary").grid(row=1, column=2, sticky='ew', pady=(6, 12))
         create_field_label(self.plot_frame, "每图曲线数").grid(row=0, column=3, sticky='w', padx=(18, 0))
         create_spinbox(self.plot_frame, 1, 50, self.o_lines, width=6).grid(row=1, column=3, sticky='w', padx=(18, 0), pady=(6, 12), ipady=5)
-        create_checkbutton(self.plot_frame, "调换 XY 列", self.o_swap_xy).grid(row=1, column=4, sticky='w', padx=(18, 0), pady=(6, 12))
+        curve_options = tk.Frame(self.plot_frame, bg=COLORS['bg_medium'])
+        curve_options.grid(row=0, column=4, rowspan=2, sticky='sw', padx=(18, 0), pady=(0, 12))
+        create_checkbutton(curve_options, "调换 XY 列", self.o_swap_xy).pack(anchor='w')
+        create_checkbutton(curve_options, "删除尾部突降点", self.o_trim_tail_drop).pack(anchor='w')
 
         self.plot_frame.columnconfigure(1, weight=1)
 
@@ -79,8 +83,8 @@ class TensileFrame(tk.Frame):
         self._setup_dnd(btn_frame)
 
         create_button(btn_frame, "仅提取数据", self.run_extract_only, "primary").pack(side='left', expand=True, fill='x', padx=(0, 4))
-        create_button(btn_frame, "仅origin绘图", self.run_plot_only, "secondary").pack(side='left', expand=True, fill='x', padx=4)
-        create_button(btn_frame, "一键PPT（非origin出图）", self.run_one_click_ppt, "cta").pack(side='left', expand=True, fill='x', padx=(4, 0))
+        create_button(btn_frame, "Origin出图", self.run_plot_only, "secondary").pack(side='left', expand=True, fill='x', padx=4)
+        create_button(btn_frame, "一键PPT（Matplotlib出图）", self.run_one_click_ppt, "cta").pack(side='left', expand=True, fill='x', padx=(4, 0))
 
     def _setup_dnd(self, widget):
         """设置拖拽"""
@@ -145,6 +149,7 @@ class TensileFrame(tk.Frame):
                 self.o_template.get() or None,
                 self.o_lines.get(),
                 self.o_swap_xy.get(),
+                self.o_trim_tail_drop.get(),
             )
             messagebox.showinfo("完成", msg)
         except Exception as e:
@@ -170,6 +175,7 @@ class TensileFrame(tk.Frame):
                 lines_per_graph=self.o_lines.get(),
                 swap_xy=self.o_swap_xy.get(),
                 elongation_mode=self.v_elongation_mode.get(),
+                trim_tail_drop=self.o_trim_tail_drop.get(),
             )
             messagebox.showinfo("完成", msg)
             os.startfile(output)
